@@ -23,6 +23,7 @@ from framework.plugin_loader import Plugin
 from framework.utils.plugins import Handler
 from mcfw.rpc import parse_complex_value
 from plugins.gipod.handlers import GipodTestHandler
+from plugins.gipod.handlers.cron import GipodSyncHandler, GipodCleanupHandler
 from plugins.gipod.to import GipodPluginConfiguration
 
 
@@ -34,4 +35,6 @@ class GipodPlugin(Plugin):
     def get_handlers(self, auth):
         if auth == Handler.AUTH_UNAUTHENTICATED:
             yield Handler(url='/plugins/gipod/test', handler=GipodTestHandler)
-
+        if auth == Handler.AUTH_ADMIN:
+            yield Handler(url='/admin/cron/gipod/sync', handler=GipodSyncHandler)
+            yield Handler(url='/admin/cron/gipod/cleanup', handler=GipodCleanupHandler)

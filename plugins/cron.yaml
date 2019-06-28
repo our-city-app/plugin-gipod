@@ -1,0 +1,8 @@
+cron:
+- description: Sync gipod data
+  url: /admin/cron/gipod/sync
+  schedule: every day 04:00
+  
+- description: Cleanup old gipod data
+  url: /admin/cron/gipod/cleanup
+  schedule: every day 00:00

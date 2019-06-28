@@ -22,4 +22,5 @@ from mcfw.properties import unicode_property
 
 
 class GipodPluginConfiguration(TO):
+    base_url = unicode_property('base_url')
     google_maps_key = unicode_property('google_maps_key')

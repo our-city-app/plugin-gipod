@@ -17,34 +17,40 @@
 #
 # @@license_version:1.5@@
 
+from datetime import datetime
 import json
 import logging
 import urllib
 
 from google.appengine.api import urlfetch
+from google.appengine.ext import ndb
 import webapp2
 
+from plugins.gipod.bizz import find_items
+from plugins.gipod.models import WorkAssignment, Manifestation
 from plugins.gipod.plugin_consts import NAMESPACE
-from plugins.gipod.utils import haversine
+from plugins.gipod.utils.location import haversine, address_to_coordinates
+
 
 class GipodTestHandler(webapp2.RequestHandler):
     def get(self):
-        mode = self.request.get('mode', 'test')
+        mode = self.request.get('mode')
 
-        if mode == 'count':
+        if mode == 'list':
             self.set_headers()
-            self.test_count_()
-        elif mode == 'location':
-            self.set_headers()
-            self.test_location()
-        elif mode == 'work':
-            self.set_headers()
-            self.test_work_detail()
+            self.test_list()
         elif mode == 'map':
             self.test_map()
+        elif mode == 'detail_map':
+            self.test_detail_map()
+        elif mode == 'demo':
+            self.test_demo()
+        elif mode == 'geo':
+            self.set_headers()
+            self.test_geo_code()
         else:
             self.response.set_status(200)
-            self.response.out.write(json.dumps({'ok': 'bajaat'}))
+            self.response.out.write(json.dumps({'error': 'unknown_mode', 'mode': mode}))
 
     def set_headers(self):
         headers = {}
@@ -52,56 +58,70 @@ class GipodTestHandler(webapp2.RequestHandler):
         headers['Accept'] = 'application/json'
         self.response.headers = headers
 
-    def test_count(self):
-        url = 'https://api.gipod.vlaanderen.be/ws/v1/manifestation'
-        offset = 0
-        params = {}
-        params['enddate'] = '2020-01-01'
-        params['limit'] = '1000'
-        while True:
-            params['offset'] = '%s' % offset
-            size = len(_do_request(url, params))
-            if size == 0:
-                break
-            offset += size
+    def test_list(self):
+        lat = self.request.get('lat')
+        lng = None
+        distance = 0
+        if lat:
+            lat = float(lat)
+            lng = float(self.request.get('lon'))
+            distance = long(self.request.get('distance'))
+        cursor = self.request.get('cursor', None)
+        start_date = self.request.get('start', None)
 
-        self.response.out.write(json.dumps({'count': offset}))
+        r = find_items(lat, lng, distance, start=start_date, cursor=cursor, limit=100)
+        if not r:
+            logging.debug('not search results')
+            self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+            return
 
-    def test_location(self):
-        url = 'https://api.gipod.vlaanderen.be/ws/v1/workassignment'
-        params = {}
-        params['city'] = 'Lille'
-        params['enddate'] = '2020-01-01'
-        params['limit'] = '10'
-        items = _do_request(url, params)
-        
-        l = []
-        for item in items:
-            d = {}
-            d['detail_url'] = 'https://api.gipod.vlaanderen.be/ws/v1/workassignment/%s' % item['gipodId']
-            d['map_url'] = 'http://localhost:8800/plugins/gipod/test?mode=map&id=%s' % item['gipodId']
+        results, new_cursor = r
+        workassignment_ids = set()
+        manifestion_ids = set()
+        for result in results:
+            uid = result.fields[0].value
+            type_, id_ = uid.split('-', 1)
+            if type_ == 'w':
+                workassignment_ids.add(long(id_))
+            elif type_ == 'm':
+                manifestion_ids.add(long(id_))
 
-            details, max_distance = _get_item_detail_with_distance(d['detail_url'])
-            d['type'] = details['location']['geometry']['type']
-            d['max_distance'] = max_distance
+        items = []
+        if workassignment_ids:
+            models = ndb.get_multi([WorkAssignment.create_key(id_) for id_ in workassignment_ids])
+            items.extend(_make_search_results('w', models))
+        if manifestion_ids:
+            models = ndb.get_multi([Manifestation.create_key(id_) for id_ in manifestion_ids])
+            items.extend(_make_search_results('m', models))
 
-            l.append(d)
-
-        self.response.out.write(json.dumps({'items': l}))
-
-    def test_work_detail(self):
-        url = 'https://api.gipod.vlaanderen.be/ws/v1/workassignment/%s' % self.request.get('id')
-
-        details, max_distance = _get_item_detail_with_distance(url)
-        
-        self.response.out.write(json.dumps({'details': details, 'max_distance': max_distance}))
+        self.response.out.write(json.dumps({'services': items, 'cursor': new_cursor}))
 
     def test_map(self):
         from framework.handlers import render_page
         from framework.plugin_loader import get_config
-        url = 'https://api.gipod.vlaanderen.be/ws/v1/workassignment/%s' % self.request.get('id')
 
-        details = _do_request(url, None)
+        config = get_config(NAMESPACE)
+
+        params = {
+            'google_maps_key': config.google_maps_key,
+        }
+        page = 'common/map.html'
+        render_page(self.response, page, NAMESPACE, params)
+
+    def test_detail_map(self):
+        from framework.handlers import render_page
+        from framework.plugin_loader import get_config
+        uid = self.request.get('uid')
+        type_, id_ = uid.split('-', 1)
+        if type_ == 'w':
+            m = WorkAssignment.get_by_id(long(id_))
+        elif type_ == 'm':
+            m = Manifestation.get_by_id(long(id_))
+        else:
+            self.abort(404)
+            return
+
+        details = m.data
 
         base_lat = details['location']['coordinate']['coordinates'][1]
         base_lng = details['location']['coordinate']['coordinates'][0]
@@ -130,66 +150,151 @@ class GipodTestHandler(webapp2.RequestHandler):
         page = 'common/map_%s.html' % map_type
         render_page(self.response, page, NAMESPACE, params)
 
+    def test_demo(self):
+        from framework.handlers import render_page
 
-def _do_request(url, params=None):
-    if params:
-        query_params = urllib.urlencode(params)
-        if query_params:
-            url = '%s?%s' % (url, query_params)
+        params = {
+        }
+        page = 'common/demo.html'
+        render_page(self.response, page, NAMESPACE, params)
 
-    logging.info('_do_request: %s', url)
-
-    result = urlfetch.fetch(url, deadline=30, follow_redirects=False)
-    if result.status_code != 200:
-        raise Exception('Failed to get gipod data')
-
-    r = json.loads(result.content)
-    return r
+    def test_geo_code(self):
+        q = self.request.get('q')
+        if q:
+            lat, lon, _, _, _ = address_to_coordinates('Belgie %s' % q, postal_code_required=False)
+            self.response.set_status(200)
+            self.response.out.write(json.dumps({'lat': lat, 'lng': lon}))
 
 
-def _get_item_detail_with_distance(url):
-    details = _do_request(url, None)
-
-    base_lat = details['location']['coordinate']['coordinates'][1]
-    base_lng = details['location']['coordinate']['coordinates'][0]
+def _make_search_results(type_, models, start_date=None):
+    from framework.plugin_loader import get_config
+    config = get_config(NAMESPACE)
+    items = []
     
-    logging.info('base coords: %s', details['location']['coordinate']['coordinates'])
+    min_date = None
+    if start_date:
+        if start_date == 'now':
+            min_date = datetime.now()
 
-    if details['location']['geometry']['type'] == 'Polygon':
-        max_distance = _get_max_distance_polygon(details, base_lat, base_lng)
-    elif details['location']['geometry']['type'] == 'MultiPolygon':
-        max_distance = _get_max_distance_multipolygon(details, base_lat, base_lng)
-    else:
-        logging.error('unknown coordinates type: %s', details['location']['geometry']['type'])
-        max_distance = 100
+    for m in models:
+        if min_date:
+            if type_ == 'w' and m.start_date < min_date:
+                continue
+            if type_ == 'm' and m.next_start_date < min_date:
+                continue
+        try:
+            description = []
+            if m.data['owner']:
+                description.append('Owner: %s' % m.data['owner'])
+            hindrance = m.data.get('hindrance') or {}
+            icon = None
 
-    return details, max_distance
+            if type_ == 'w':
+                if m.data['reference']:
+                    description.append('Reference: %s' % m.data['reference'])
 
+                description.append('Start: %s' % m.data['startDateTime'])
+                description.append('End: %s' % m.data['endDateTime'])
 
-def _get_max_distance_multipolygon(details, base_lat, base_lng):
-    max_distance = 100
-    for c1 in details['location']['geometry']['coordinates']:
-        for c in c1:
-            for coords in c:
-                lat = coords[1]
-                lng = coords[0]
+                if hindrance.get('important', False):
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/important_32.png'
+                else:
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/nonimportant_32.png'
 
-                distance = long(haversine(lng, lat, base_lng, base_lat) * 1000)
-                if distance > max_distance:
-                    max_distance = distance
+            elif type_ == 'm':
+                if m.data['status']:
+                    description.append('Status: %s' % m.data['status'])
 
-    return max_distance
+                if m.data['eventType'] == '(Werf)kraan':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/(werf)kraan_32.png'
+                elif m.data['eventType'] == 'Betoging':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/betoging_32.png'
+                elif m.data['eventType'] == 'Container/Werfkeet':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/containerwerfkeet_32.png'
+                elif m.data['eventType'] == 'Feest/Kermis':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/feestkermis_32.png'
+                elif m.data['eventType'] == 'Markt':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/markt_32.png'
+                elif m.data['eventType'] == 'Speelstraat':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/speelstraat_32.png'
+                elif m.data['eventType'] == 'Sportwedstrijd':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/sportwedstrijd_32.png'
+                elif m.data['eventType'] == 'Stelling':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/stelling_32.png'
+                elif m.data['eventType'] == 'Terras':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/terras_32.png'
+                elif m.data['eventType'] == 'Verhuislift':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/verhuislift_32.png'
+                elif m.data['eventType'] == 'Wielerwedstrijd - gesloten criterium':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20gesloten%20criterium_32.png'
+                elif m.data['eventType'] == 'Wielerwedstrijd - open criterium':
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20open%20criterium_32.png'
+                else:
+                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/andere_32.png'
 
+                for p in  m.data['periods']:
+                    description.append('Start: %s' % p['startDateTime'])
+                    description.append('End: %s' % p['endDateTime'])
 
-def _get_max_distance_polygon(details, base_lat, base_lng):
-    max_distance = 100
-    for c in details['location']['geometry']['coordinates']:
-        for coords in c:
-            lat = coords[1]
-            lng = coords[0]
+            if m.data['comment']:
+                description.append(m.data['comment'])
+            description.extend(hindrance.get('effects') or [])
 
-            distance = long(haversine(lng, lat, base_lng, base_lat) * 1000)
-            if distance > max_distance:
-                max_distance = distance
+            items.append({
+                'id': m.uid,
+                'hash': m.uid,
+                'name': m.data['description'],
+                'lat': m.data['location']['coordinate']['coordinates'][1],
+                'lon': m.data['location']['coordinate']['coordinates'][0],
+                'description': '\n'.join(description),
+                'details': '%s/plugins/gipod/test?mode=detail_map&uid=%s' % (config.base_url, m.uid),
+                'icon': icon
+            })
+        except:
+            logging.debug('uid: %s', m.uid)
+            raise
 
-    return max_distance
+    return items
+
+# def _get_item_detail_with_distance(details):
+#     base_lat = details['location']['coordinate']['coordinates'][1]
+#     base_lng = details['location']['coordinate']['coordinates'][0]
+#
+#     if details['location']['geometry']['type'] == 'Polygon':
+#         max_distance = _get_max_distance_polygon(details, base_lat, base_lng)
+#     elif details['location']['geometry']['type'] == 'MultiPolygon':
+#         max_distance = _get_max_distance_multipolygon(details, base_lat, base_lng)
+#     else:
+#         logging.error('unknown coordinates type: %s', details['location']['geometry']['type'])
+#         max_distance = 100
+#
+#     return details, max_distance
+#
+#
+# def _get_max_distance_multipolygon(details, base_lat, base_lng):
+#     max_distance = 100
+#     for c1 in details['location']['geometry']['coordinates']:
+#         for c in c1:
+#             for coords in c:
+#                 lat = coords[1]
+#                 lng = coords[0]
+#
+#                 distance = long(haversine(lng, lat, base_lng, base_lat) * 1000)
+#                 if distance > max_distance:
+#                     max_distance = distance
+#
+#     return max_distance
+#
+#
+# def _get_max_distance_polygon(details, base_lat, base_lng):
+#     max_distance = 100
+#     for c in details['location']['geometry']['coordinates']:
+#         for coords in c:
+#             lat = coords[1]
+#             lng = coords[0]
+#
+#             distance = long(haversine(lng, lat, base_lng, base_lat) * 1000)
+#             if distance > max_distance:
+#                 max_distance = distance
+#
+#     return max_distance

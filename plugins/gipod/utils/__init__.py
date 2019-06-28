@@ -17,21 +17,11 @@
 #
 # @@license_version:1.5@@
 
-from math import radians, cos, sin, asin, sqrt, degrees
 
-
-def haversine(lon1, lat1, lon2, lat2):
-    """
-    Calculate the great circle distance in km between two points
-    on the earth (specified in decimal degrees)
-    """
-    # convert decimal degrees to radians
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-    # haversine formula
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-    c = 2 * asin(sqrt(a))
-    km = 6371 * c
-#     km = 6378.1370 * c
-    return km
+def drop_index(the_index):
+    while True:
+        search_result = the_index.get_range(ids_only=True)
+        ids = [r.doc_id for r in search_result.results]
+        if not ids:
+            break
+        the_index.delete(ids)

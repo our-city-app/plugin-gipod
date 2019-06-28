@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright 2018 Mobicage NV
-# NOTICE: THIS FILE HAS BEEN MODIFIED BY MOBICAGE NV IN ACCORDANCE WITH THE APACHE LICENSE VERSION 2.0
-# Copyright 2018 GIG Technology NV
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,12 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# @@license_version:1.5@@
+# @@license_version:1.3@@
 
-from __future__ import unicode_literals
+import webapp2
 
-NAMESPACE = 'gipod'
+from plugins.gipod.bizz.manifestations import sync as sync_workassignments
+from plugins.gipod.bizz.workassignments import sync as sync_manifestations
 
-SYNC_QUEUE = 'sync-queue'
 
-GIPOD_API_URL = 'https://api.gipod.vlaanderen.be/ws/v1'
+class GipodSyncHandler(webapp2.RequestHandler):
+
+    def get(self):
+        sync_workassignments()
+        sync_manifestations()
+
+
+class GipodCleanupHandler(webapp2.RequestHandler):
+
+    def get(self):
+        pass
+
