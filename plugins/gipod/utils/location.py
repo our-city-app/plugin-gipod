@@ -19,7 +19,7 @@
 
 import json
 import logging
-from math import radians, cos, sin, asin, sqrt, degrees
+from math import radians, cos, sin, asin, sqrt
 import urllib
 
 from google.appengine.api import urlfetch
@@ -85,7 +85,7 @@ def address_to_coordinates(address, postal_code_required=True):
         if 'postal_code' in a['types']:
             postal_code = a['short_name']
     if postal_code_required and not postal_code:
-        raise GeoCodeException('Could not resolve address to coordinates')
+        raise Exception('no_postal_code')
     place_id = result['place_id']
     formatted_address = result['formatted_address']
     return lat, lon, place_id, postal_code, formatted_address

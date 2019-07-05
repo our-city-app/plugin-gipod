@@ -104,7 +104,8 @@
                 				      '<h1 id="firstHeading" class="firstHeading">'+ htmlEncode(service.name) +'</h1>'+
                 				      '<div id="bodyContent">'+
                 				      '<p>'+ htmlEncode(service.description) +'</p>'+
-                				      '<a href="' + service.details + '" target="_blank" >Details</a>'+
+                				      '<a href="' + service.links.map + '" target="_blank">Details (Map)</a>'+
+                				      '<a href="' + service.links.gipod + '" target="_blank">Details (Gipod)</a>'+
                 				      '</div>'+
                 				      '</div>'
                 				});

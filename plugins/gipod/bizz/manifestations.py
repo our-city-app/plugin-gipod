@@ -25,8 +25,8 @@ from google.appengine.api import search
 from google.appengine.ext import ndb, deferred
 
 from framework.bizz.job import run_job
-from framework.utils import get_epoch_from_datetime
 from framework.utils.cloud_tasks import create_task, run_tasks
+from mcfw.consts import DEBUG
 from mcfw.rpc import returns, arguments
 from plugins.gipod.bizz import do_request, LOCATION_INDEX
 from plugins.gipod.models import ManifestationSettings, Manifestation
@@ -45,14 +45,19 @@ def sync():
     settings.put()
 
 
+def cleanup():
+    run_job(cleanup_query, [], cleanup_worker, [])
+
+
 def _sync_all(last_sync, offset=0):
-    end_date = datetime.now() + relativedelta(months=12)
+    end_date = datetime.now() + relativedelta(months=1 if DEBUG else 12)
     params = {}
     params['enddate'] = end_date.strftime("%Y-%m-%d")
     params['limit'] = '1000'
     params['offset'] = '%s' % offset
 
     tasks = []
+    skip_tasks = []
     items = do_request('/manifestation', params)
     for item in items:
         if last_sync:
@@ -61,73 +66,83 @@ def _sync_all(last_sync, offset=0):
             else:
                 d = datetime.strptime(item['latestUpdate'], "%Y-%m-%dT%H:%M:%S")
             if last_sync > d:
+                skip_tasks.append(create_task(_update_one, str(item['gipodId']), skip_if_exists=True))
                 continue
 
         tasks.append(create_task(_update_one, str(item['gipodId'])))
 
     logging.info('Scheduling update of %s manifestations', len(tasks))
     run_tasks(tasks, SYNC_QUEUE)
+    run_tasks(skip_tasks, SYNC_QUEUE)
 
     if len(items) > 0:
         deferred.defer(_sync_all, last_sync, offset + len(items), _queue=SYNC_QUEUE)
 
 
-def _update_one(gipod_id):
-    details = do_request('/manifestation/%s' % gipod_id)
-
-    m = Manifestation.get_by_gipod_id(gipod_id)
+def _update_one(gipod_id, skip_if_exists=False):
+    m_key = Manifestation.create_key(Manifestation.TYPE, gipod_id)
+    m = m_key.get()
+    if m and skip_if_exists:
+        return
     if not m:
-        m = Manifestation.create(gipod_id)
+        m = Manifestation(key=m_key)
 
-    m.next_start_date = None
-    m.max_end_date = None
-
-    for p in details['periods']:
-        start_date = datetime.strptime(p['startDateTime'], "%Y-%m-%dT%H:%M:%S")
-        if not m.next_start_date or start_date > m.next_start_date:
-            m.next_start_date = start_date
-
-        end_date = datetime.strptime(p['endDateTime'], "%Y-%m-%dT%H:%M:%S")
-        if not m.max_end_date or end_date > m.max_end_date:
-            m.max_end_date = end_date
-
-    m.data = details
-    m.put()
-
+    m.data = do_request('/manifestation/%s' % gipod_id)
     re_index_manifestation(m)
 
 
-@returns(search.Document)
+@returns([search.Document])
 @arguments(m_key=ndb.Key)
 def re_index(m_key):
     m = m_key.get()
     return re_index_manifestation(m)
 
 
-@returns(search.Document)
+@returns([search.Document])
 @arguments(manifestation=Manifestation)
 def re_index_manifestation(manifestation):
     the_index = search.Index(name=LOCATION_INDEX)
-    uid = manifestation.uid
-    the_index.delete([uid])
+    the_index.delete(manifestation.search_keys)
+
+    if 'next_start_date' in manifestation._properties:
+        del manifestation._properties['next_start_date']
+    if 'max_end_date' in manifestation._properties:
+        del manifestation._properties['max_end_date']
 
     geo_point = search.GeoPoint(manifestation.data['location']['coordinate']['coordinates'][1],
                                 manifestation.data['location']['coordinate']['coordinates'][0])
 
-#     next_start_date = None
-#     for p in manifestation.data['periods']:
-#         start_date = datetime.strptime(p['startDateTime'], "%Y-%m-%dT%H:%M:%S")
-#         if not next_start_date or start_date > next_start_date:
-#             next_start_date = start_date
+    manifestation.cleanup_date = None
+    manifestation.search_keys = []
+    docs = []
 
-    fields = [search.AtomField(name='id', value=uid),
-              search.GeoField(name='location', value=geo_point),
-              search.DateField(name='start_datetime', value=manifestation.next_start_date)]
+    now_ = datetime.utcnow()
 
-    m_doc = search.Document(doc_id=uid, fields=fields)
-    the_index.put(m_doc)
+    for i, p in enumerate(manifestation.data['periods']):
+        end_date = datetime.strptime(p['endDateTime'], "%Y-%m-%dT%H:%M:%S")
+        if end_date <= now_:
+            continue
 
-    return m_doc
+        uid = u'%s-%s' % (manifestation.uid, i)
+        manifestation.search_keys.append(uid)
+
+        if not manifestation.cleanup_date or manifestation.cleanup_date > end_date:
+            manifestation.cleanup_date = end_date
+
+        start_date = datetime.strptime(p['startDateTime'], "%Y-%m-%dT%H:%M:%S")
+        fields = [
+            search.AtomField(name='id', value=uid),
+            search.GeoField(name='location', value=geo_point),
+            search.DateField(name='start_datetime', value=start_date),
+            search.DateField(name='end_datetime', value=end_date)
+        ]
+
+        docs.append(search.Document(doc_id=uid, fields=fields))
+
+    manifestation.put()
+    if docs:
+        the_index.put(docs)
+    return docs
 
 
 def re_index_all():
@@ -140,3 +155,13 @@ def re_index_worker(m_key):
 
 def re_index_query():
     return Manifestation.query()
+
+
+def cleanup_worker(m_key):
+    re_index(m_key)
+
+
+def cleanup_query():
+    qry = Manifestation.query()
+    qry = qry.filter(Manifestation.cleanup_date < datetime.utcnow())
+    return qry

@@ -21,6 +21,7 @@ from __future__ import unicode_literals
 
 from framework.plugin_loader import Plugin
 from framework.utils.plugins import Handler
+from mcfw.consts import DEBUG
 from mcfw.rpc import parse_complex_value
 from plugins.gipod.handlers import GipodTestHandler
 from plugins.gipod.handlers.cron import GipodSyncHandler, GipodCleanupHandler
@@ -31,6 +32,8 @@ class GipodPlugin(Plugin):
     def __init__(self, configuration):
         super(GipodPlugin, self).__init__(configuration)
         self.configuration = parse_complex_value(GipodPluginConfiguration, configuration, False)
+        if DEBUG:
+            self.configuration.base_url = 'http://localhost:8800'
 
     def get_handlers(self, auth):
         if auth == Handler.AUTH_UNAUTHENTICATED:

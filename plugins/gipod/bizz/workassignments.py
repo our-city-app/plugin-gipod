@@ -26,7 +26,9 @@ from google.appengine.ext import ndb, deferred
 
 from framework.bizz.job import run_job
 from framework.utils.cloud_tasks import create_task, run_tasks
+from mcfw.consts import DEBUG
 from mcfw.rpc import returns, arguments
+from plugins.gipod.bizz import do_request, LOCATION_INDEX
 from plugins.gipod.models import WorkAssignmentSettings, WorkAssignment
 from plugins.gipod.plugin_consts import SYNC_QUEUE
 
@@ -43,15 +45,19 @@ def sync():
     settings.put()
 
 
+def cleanup():
+    run_job(cleanup_query, [], cleanup_worker, [])
+
+
 def _sync_all(last_sync, offset=0):
-    from plugins.gipod.bizz import do_request
-    end_date = datetime.now() + relativedelta(months=12)
+    end_date = datetime.now() + relativedelta(months=1 if DEBUG else 12)
     params = {}
     params['enddate'] = end_date.strftime("%Y-%m-%d")
     params['limit'] = '1000'
     params['offset'] = '%s' % offset
 
     tasks = []
+    skip_tasks = []
     items = do_request('/workassignment', params)
     for item in items:
         if last_sync:
@@ -60,59 +66,78 @@ def _sync_all(last_sync, offset=0):
             else:
                 d = datetime.strptime(item['latestUpdate'], "%Y-%m-%dT%H:%M:%S")
             if last_sync > d:
+                skip_tasks.append(create_task(_update_one, str(item['gipodId']), skip_if_exists=True))
                 continue
 
         tasks.append(create_task(_update_one, str(item['gipodId'])))
 
     logging.info('Scheduling update of %s workassignents', len(tasks))
     run_tasks(tasks, SYNC_QUEUE)
+    run_tasks(skip_tasks, SYNC_QUEUE)
 
     if len(items) > 0:
         deferred.defer(_sync_all, last_sync, offset + len(items), _queue=SYNC_QUEUE)
 
 
-def _update_one(gipod_id):
-    from plugins.gipod.bizz import do_request
-    details = do_request('/workassignment/%s' % gipod_id)
-
-    m = WorkAssignment.get_by_gipod_id(gipod_id)
+def _update_one(gipod_id, skip_if_exists=False):
+    m_key = WorkAssignment.create_key(WorkAssignment.TYPE, gipod_id)
+    m = m_key.get()
+    if m and skip_if_exists:
+        return
     if not m:
-        m = WorkAssignment.create(gipod_id)
+        m = WorkAssignment(key=m_key)
 
-    m.start_date = datetime.strptime(details['startDateTime'], "%Y-%m-%dT%H:%M:%S")
-    m.end_date = datetime.strptime(details['endDateTime'], "%Y-%m-%dT%H:%M:%S")
-    m.data = details
-    m.put()
-
+    m.data = do_request('/workassignment/%s' % gipod_id)
     re_index_workassignment(m)
 
 
-@returns(search.Document)
+@returns([search.Document])
 @arguments(m_key=ndb.Key)
 def re_index(m_key):
     m = m_key.get()
     return re_index_workassignment(m)
 
 
-@returns(search.Document)
+@returns([search.Document])
 @arguments(workassignment=WorkAssignment)
 def re_index_workassignment(workassignment):
-    from plugins.gipod.bizz import LOCATION_INDEX
     the_index = search.Index(name=LOCATION_INDEX)
+    the_index.delete(workassignment.search_keys)
+
+    if 'start_date' in workassignment._properties:
+        del workassignment._properties['start_date']
+    if 'end_date' in workassignment._properties:
+        del workassignment._properties['end_date']
+
+    workassignment.cleanup_date = None
+    workassignment.search_keys = []
+
+    now_ = datetime.utcnow()
+    end_date = datetime.strptime(workassignment.data['endDateTime'], "%Y-%m-%dT%H:%M:%S")
+    if end_date <= now_:
+        workassignment.put()
+        return []
+    
     uid = workassignment.uid
-    the_index.delete([uid])
+
+    workassignment.cleanup_date = end_date
+    workassignment.search_keys.append(uid)
 
     geo_point = search.GeoPoint(workassignment.data['location']['coordinate']['coordinates'][1],
                                 workassignment.data['location']['coordinate']['coordinates'][0])
+    start_date = datetime.strptime(workassignment.data['startDateTime'], "%Y-%m-%dT%H:%M:%S")
+    fields = [
+        search.AtomField(name='id', value=uid),
+        search.GeoField(name='location', value=geo_point),
+        search.DateField(name='start_datetime', value=start_date),
+        search.DateField(name='end_datetime', value=end_date)
+    ]
 
-    fields = [search.AtomField(name='id', value=uid),
-              search.GeoField(name='location', value=geo_point),
-              search.DateField(name='start_datetime', value=workassignment.start_date)]
-
+    workassignment.put()
     m_doc = search.Document(doc_id=uid, fields=fields)
     the_index.put(m_doc)
 
-    return m_doc
+    return [m_doc]
 
 
 def re_index_all():
@@ -125,3 +150,13 @@ def re_index_worker(m_key):
 
 def re_index_query():
     return WorkAssignment.query()
+
+
+def cleanup_worker(m_key):
+    re_index(m_key)
+
+
+def cleanup_query():
+    qry = WorkAssignment.query()
+    qry = qry.filter(WorkAssignment.cleanup_date < datetime.utcnow())
+    return qry

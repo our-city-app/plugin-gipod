@@ -36,7 +36,7 @@
 			</div>
 	    </div>
 	    <div class="col">
-	      	<a href="#" id="map">View map</a>
+	      	<a href="#" id="map" target="_blank">View map</a>
 	      	<div id="services_count"></div>
 	      	<table class="table">
 			  <thead>
@@ -56,7 +56,9 @@
 
     <script>
 		$(function() {
-			var currentDate = "2019-6-27";
+			var d = new Date();
+	    	var currentDate = d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+			//var currentDate = "2019-6-27";
 			var currentLocation = null;
 			var currentDistance = null;
 			var last_call = new Date().getTime();
@@ -74,6 +76,7 @@
     	    	var mapParams = {
     	    		mode: 'map',
     	    		start: currentDate,
+    	    		zoom: 12
        	    	};
     	    	if (currentLocation !== null) {
     	    		search_criteria['lat'] = currentLocation.lat;
@@ -122,6 +125,16 @@
 	            			var img = $('<img src="#" alt="icon" height="32" width="32">');
 	            			img.attr('src', service.icon);
 	            			td1.append(img);
+	            			td1.append('<br />');
+	            			var a1 = $('<a href="#" target="_blank"></a>');
+	            			a1.attr('href', service.links.map);
+	            			a1.text('Map')
+	            			td1.append(a1);
+	            			td1.append('<br />');
+	            			var a2 = $('<a href="#" target="_blank"></a>');
+	            			a2.attr('href', service.links.gipod);
+	            			a2.text('Gipod')
+	            			td1.append(a2);
 	            			tr.append(td1);
 	            			
 	            			var td2 = $('<td>2</td>');
@@ -177,7 +190,7 @@
 			
         	$("#datepicker").datepicker({
         		dateFormat: 'dd-mm-yy',
-        		defaultDate: new Date(2019, 5, 27),
+        		//defaultDate: new Date(2019, 5, 27),
         		minDate: new Date(2019, 4, 25),
         		maxDate: "+1y +1m +1w",
         		beforeShowDay: enableAllTheseDays,

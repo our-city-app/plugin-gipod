@@ -76,23 +76,27 @@ class GipodTestHandler(webapp2.RequestHandler):
             return
 
         results, new_cursor = r
-        workassignment_ids = set()
-        manifestion_ids = set()
+        keys = set()
         for result in results:
             uid = result.fields[0].value
-            type_, id_ = uid.split('-', 1)
+            parts = uid.split('-')
+
+            if len(parts) == 2:
+                type_, gipod_id = parts
+            else:
+                type_, gipod_id, _ = parts
+
             if type_ == 'w':
-                workassignment_ids.add(long(id_))
+                keys.add(WorkAssignment.create_key(WorkAssignment.TYPE, gipod_id))
             elif type_ == 'm':
-                manifestion_ids.add(long(id_))
+                keys.add(Manifestation.create_key(Manifestation.TYPE, gipod_id))
 
         items = []
-        if workassignment_ids:
-            models = ndb.get_multi([WorkAssignment.create_key(id_) for id_ in workassignment_ids])
-            items.extend(_make_search_results('w', models))
-        if manifestion_ids:
-            models = ndb.get_multi([Manifestation.create_key(id_) for id_ in manifestion_ids])
-            items.extend(_make_search_results('m', models))
+        if keys:
+            models = ndb.get_multi(keys)
+            items.extend(_make_search_results(models))
+        else:
+            items = []
 
         self.response.out.write(json.dumps({'services': items, 'cursor': new_cursor}))
 
@@ -112,11 +116,11 @@ class GipodTestHandler(webapp2.RequestHandler):
         from framework.handlers import render_page
         from framework.plugin_loader import get_config
         uid = self.request.get('uid')
-        type_, id_ = uid.split('-', 1)
+        type_, gipod_id = uid.split('-', 1)
         if type_ == 'w':
-            m = WorkAssignment.get_by_id(long(id_))
+            m = WorkAssignment.create_key(WorkAssignment.TYPE, gipod_id).get()
         elif type_ == 'm':
-            m = Manifestation.get_by_id(long(id_))
+            m = Manifestation.create_key(Manifestation.TYPE, gipod_id).get()
         else:
             self.abort(404)
             return
@@ -166,22 +170,13 @@ class GipodTestHandler(webapp2.RequestHandler):
             self.response.out.write(json.dumps({'lat': lat, 'lng': lon}))
 
 
-def _make_search_results(type_, models, start_date=None):
+def _make_search_results(models):
     from framework.plugin_loader import get_config
     config = get_config(NAMESPACE)
     items = []
     
-    min_date = None
-    if start_date:
-        if start_date == 'now':
-            min_date = datetime.now()
 
     for m in models:
-        if min_date:
-            if type_ == 'w' and m.start_date < min_date:
-                continue
-            if type_ == 'm' and m.next_start_date < min_date:
-                continue
         try:
             description = []
             if m.data['owner']:
@@ -189,7 +184,7 @@ def _make_search_results(type_, models, start_date=None):
             hindrance = m.data.get('hindrance') or {}
             icon = None
 
-            if type_ == 'w':
+            if m.TYPE == 'w':
                 if m.data['reference']:
                     description.append('Reference: %s' % m.data['reference'])
 
@@ -201,7 +196,9 @@ def _make_search_results(type_, models, start_date=None):
                 else:
                     icon = 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/nonimportant_32.png'
 
-            elif type_ == 'm':
+                gipodUrl = 'https://api.gipod.vlaanderen.be/ws/v1/workassignment/%s?crs=WGS84' % m.data['gipodId']
+
+            elif m.TYPE == 'm':
                 if m.data['status']:
                     description.append('Status: %s' % m.data['status'])
 
@@ -236,6 +233,8 @@ def _make_search_results(type_, models, start_date=None):
                     description.append('Start: %s' % p['startDateTime'])
                     description.append('End: %s' % p['endDateTime'])
 
+                gipodUrl = 'https://api.gipod.vlaanderen.be/ws/v1/manifestation/%s?crs=WGS84' % m.data['gipodId']
+
             if m.data['comment']:
                 description.append(m.data['comment'])
             description.extend(hindrance.get('effects') or [])
@@ -247,8 +246,11 @@ def _make_search_results(type_, models, start_date=None):
                 'lat': m.data['location']['coordinate']['coordinates'][1],
                 'lon': m.data['location']['coordinate']['coordinates'][0],
                 'description': '\n'.join(description),
-                'details': '%s/plugins/gipod/test?mode=detail_map&uid=%s' % (config.base_url, m.uid),
-                'icon': icon
+                'icon': icon,
+                'links': {
+                    'map': '%s/plugins/gipod/test?mode=detail_map&uid=%s' % (config.base_url, m.uid),
+                    'gipod': gipodUrl
+                }
             })
         except:
             logging.debug('uid: %s', m.uid)

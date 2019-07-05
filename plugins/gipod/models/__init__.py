@@ -43,65 +43,31 @@ class ManifestationSettings(NdbModel):
         return ndb.Key(cls, u'ManifestationSettings', namespace=cls.NAMESPACE)
 
 
-class WorkAssignment(NdbModel):
+class BaseModel(NdbModel):
     NAMESPACE = NAMESPACE
+    TYPE_WORK_ASSIGNMENT = u'w'
+    TYPE_MANIFESTATION = u'm'
 
-    gipod_id = ndb.StringProperty()
-
-    start_date = ndb.DateTimeProperty()
-    end_date = ndb.DateTimeProperty()
+    cleanup_date = ndb.DateTimeProperty()
+    search_keys = ndb.StringProperty(indexed=False, repeated=True)
 
     data = ndb.JsonProperty(compressed=True)
-
-    @property
-    def workassignment_id(self):
-        return self.key.id()
-
-    @property
-    def uid(self):
-        return u'w-%s' % (self.workassignment_id)
     
-    @classmethod
-    def create_key(cls, id_):
-        return ndb.Key(cls, id_, namespace=cls.NAMESPACE)
-
-    @classmethod
-    def create(cls, gipod_id):
-        return cls(gipod_id=gipod_id,
-                   namespace=cls.NAMESPACE)
-
-    @classmethod
-    def get_by_gipod_id(cls, gipod_id):
-        return cls.query().filter(cls.gipod_id == gipod_id).get()
-
-
-class Manifestation(NdbModel):
-    NAMESPACE = NAMESPACE
-
-    gipod_id = ndb.StringProperty()
-
-    next_start_date = ndb.DateTimeProperty()
-    max_end_date = ndb.DateTimeProperty()
-
-    data = ndb.JsonProperty(compressed=True)
-
-    @property
-    def manifestation_id(self):
-        return self.key.id()
-
     @property
     def uid(self):
-        return u'm-%s' % (self.manifestation_id)
+        return self.key.id()
 
     @classmethod
-    def create_key(cls, id_):
+    def create_key(cls, type_, gipod_id):
+        if type_ not in (cls.TYPE_WORK_ASSIGNMENT, cls.TYPE_MANIFESTATION):
+            raise Exception('incorrect type')
+        id_ = u'%s-%s' % (type_, gipod_id)
         return ndb.Key(cls, id_, namespace=cls.NAMESPACE)
 
-    @classmethod
-    def create(cls, gipod_id):
-        return cls(gipod_id=gipod_id,
-                   namespace=cls.NAMESPACE)
 
-    @classmethod
-    def get_by_gipod_id(cls, gipod_id):
-        return cls.query().filter(cls.gipod_id == gipod_id).get()
+class WorkAssignment(BaseModel):
+    TYPE = BaseModel.TYPE_WORK_ASSIGNMENT
+
+
+class Manifestation(BaseModel):
+    TYPE = BaseModel.TYPE_MANIFESTATION

@@ -17,8 +17,8 @@
 
 import webapp2
 
-from plugins.gipod.bizz.manifestations import sync as sync_workassignments
-from plugins.gipod.bizz.workassignments import sync as sync_manifestations
+from plugins.gipod.bizz.manifestations import sync as sync_workassignments, cleanup as cleanup_workassignments
+from plugins.gipod.bizz.workassignments import sync as sync_manifestations, cleanup as cleanup_manifestations
 
 
 class GipodSyncHandler(webapp2.RequestHandler):
@@ -31,5 +31,5 @@ class GipodSyncHandler(webapp2.RequestHandler):
 class GipodCleanupHandler(webapp2.RequestHandler):
 
     def get(self):
-        pass
-
+        cleanup_workassignments()
+        cleanup_manifestations()

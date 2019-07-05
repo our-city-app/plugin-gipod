@@ -1,6 +1,6 @@
 queue:
   - name: sync-queue
     rate: 100/s
-    max_concurrent_requests: 100
+    max_concurrent_requests: 40
     retry_parameters:
       task_age_limit: 3h
