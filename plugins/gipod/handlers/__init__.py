@@ -22,281 +22,254 @@ import json
 import logging
 import urllib
 
-from google.appengine.api import urlfetch
 from google.appengine.ext import ndb
 import webapp2
 
-from plugins.gipod.bizz import find_items
-from plugins.gipod.models import WorkAssignment, Manifestation
-from plugins.gipod.plugin_consts import NAMESPACE
-from plugins.gipod.utils.location import haversine, address_to_coordinates
+from framework.utils import get_epoch_from_datetime
+from plugins.gipod.bizz import find_items, get_workassignment_icon, \
+    get_manifestation_icon
+from plugins.gipod.models import WorkAssignment, Manifestation, Consumer
 
 
-class GipodTestHandler(webapp2.RequestHandler):
-    def get(self):
-        mode = self.request.get('mode')
-
-        if mode == 'list':
-            self.set_headers()
-            self.test_list()
-        elif mode == 'map':
-            self.test_map()
-        elif mode == 'detail_map':
-            self.test_detail_map()
-        elif mode == 'demo':
-            self.test_demo()
-        elif mode == 'geo':
-            self.set_headers()
-            self.test_geo_code()
-        else:
-            self.response.set_status(200)
-            self.response.out.write(json.dumps({'error': 'unknown_mode', 'mode': mode}))
-
-    def set_headers(self):
-        headers = {}
-        headers['Content-Type'] = 'application/json'
-        headers['Accept'] = 'application/json'
-        self.response.headers = headers
-
-    def test_list(self):
-        lat = self.request.get('lat')
-        lng = None
-        distance = 0
-        if lat:
-            lat = float(lat)
-            lng = float(self.request.get('lon'))
-            distance = long(self.request.get('distance'))
-        cursor = self.request.get('cursor', None)
-        start_date = self.request.get('start', None)
-
-        r = find_items(lat, lng, distance, start=start_date, cursor=cursor, limit=100)
-        if not r:
-            logging.debug('not search results')
-            self.response.out.write(json.dumps({'items': [], 'cursor': None}))
-            return
-
-        results, new_cursor = r
-        keys = set()
-        for result in results:
-            uid = result.fields[0].value
-            parts = uid.split('-')
-
-            if len(parts) == 2:
-                type_, gipod_id = parts
-            else:
-                type_, gipod_id, _ = parts
-
-            if type_ == 'w':
-                keys.add(WorkAssignment.create_key(WorkAssignment.TYPE, gipod_id))
-            elif type_ == 'm':
-                keys.add(Manifestation.create_key(Manifestation.TYPE, gipod_id))
-
-        items = []
-        if keys:
-            models = ndb.get_multi(keys)
-            items.extend(_make_search_results(models))
-        else:
-            items = []
-
-        self.response.out.write(json.dumps({'services': items, 'cursor': new_cursor}))
-
-    def test_map(self):
-        from framework.handlers import render_page
-        from framework.plugin_loader import get_config
-
-        config = get_config(NAMESPACE)
-
-        params = {
-            'google_maps_key': config.google_maps_key,
-        }
-        page = 'common/map.html'
-        render_page(self.response, page, NAMESPACE, params)
-
-    def test_detail_map(self):
-        from framework.handlers import render_page
-        from framework.plugin_loader import get_config
-        uid = self.request.get('uid')
-        type_, gipod_id = uid.split('-', 1)
-        if type_ == 'w':
-            m = WorkAssignment.create_key(WorkAssignment.TYPE, gipod_id).get()
-        elif type_ == 'm':
-            m = Manifestation.create_key(Manifestation.TYPE, gipod_id).get()
-        else:
-            self.abort(404)
-            return
-
-        details = m.data
-
-        base_lat = details['location']['coordinate']['coordinates'][1]
-        base_lng = details['location']['coordinate']['coordinates'][0]
-        coords = []
-        if details['location']['geometry']['type'] == 'Polygon':
-            map_type = 'polygon'
-            for c1 in details['location']['geometry']['coordinates']:
-                for c in c1:
-                    coords.append({'lat': c[1], 'lng': c[0]})
-
-        elif details['location']['geometry']['type'] == 'MultiPolygon':
-            map_type = 'multipolygon'
-            coords = details['location']['geometry']['coordinates']
-        else:
-            self.abort(404)
-            return
-
-        config = get_config(NAMESPACE)
-
-        params = {
-            'google_maps_key': config.google_maps_key,
-            'base_lat': base_lat,
-            'base_lng': base_lng,
-            'coords': coords
-        }
-        page = 'common/map_%s.html' % map_type
-        render_page(self.response, page, NAMESPACE, params)
-
-    def test_demo(self):
-        from framework.handlers import render_page
-
-        params = {
-        }
-        page = 'common/demo.html'
-        render_page(self.response, page, NAMESPACE, params)
-
-    def test_geo_code(self):
-        q = self.request.get('q')
-        if q:
-            lat, lon, _, _, _ = address_to_coordinates('Belgie %s' % q, postal_code_required=False)
-            self.response.set_status(200)
-            self.response.out.write(json.dumps({'lat': lat, 'lng': lon}))
-
-
-def _make_search_results(models):
-    from framework.plugin_loader import get_config
-    config = get_config(NAMESPACE)
+def _make_search_results(models, extras=None):
     items = []
-    
-
     for m in models:
         try:
-            description = []
-            if m.data['owner']:
-                description.append('Owner: %s' % m.data['owner'])
             hindrance = m.data.get('hindrance') or {}
             icon = None
 
             if m.TYPE == 'w':
-                if m.data['reference']:
-                    description.append('Reference: %s' % m.data['reference'])
-
-                description.append('Start: %s' % m.data['startDateTime'])
-                description.append('End: %s' % m.data['endDateTime'])
-
-                if hindrance.get('important', False):
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/important_32.png'
-                else:
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/nonimportant_32.png'
-
-                gipodUrl = 'https://api.gipod.vlaanderen.be/ws/v1/workassignment/%s?crs=WGS84' % m.data['gipodId']
-
+                icon = get_workassignment_icon(hindrance.get('important', False))
             elif m.TYPE == 'm':
-                if m.data['status']:
-                    description.append('Status: %s' % m.data['status'])
+                icon = get_manifestation_icon(m.data['eventType'])
 
-                if m.data['eventType'] == '(Werf)kraan':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/(werf)kraan_32.png'
-                elif m.data['eventType'] == 'Betoging':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/betoging_32.png'
-                elif m.data['eventType'] == 'Container/Werfkeet':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/containerwerfkeet_32.png'
-                elif m.data['eventType'] == 'Feest/Kermis':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/feestkermis_32.png'
-                elif m.data['eventType'] == 'Markt':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/markt_32.png'
-                elif m.data['eventType'] == 'Speelstraat':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/speelstraat_32.png'
-                elif m.data['eventType'] == 'Sportwedstrijd':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/sportwedstrijd_32.png'
-                elif m.data['eventType'] == 'Stelling':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/stelling_32.png'
-                elif m.data['eventType'] == 'Terras':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/terras_32.png'
-                elif m.data['eventType'] == 'Verhuislift':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/verhuislift_32.png'
-                elif m.data['eventType'] == 'Wielerwedstrijd - gesloten criterium':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20gesloten%20criterium_32.png'
-                elif m.data['eventType'] == 'Wielerwedstrijd - open criterium':
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20open%20criterium_32.png'
-                else:
-                    icon = 'https://api.gipod.vlaanderen.be/Icons/Manifestation/andere_32.png'
-
-                for p in  m.data['periods']:
-                    description.append('Start: %s' % p['startDateTime'])
-                    description.append('End: %s' % p['endDateTime'])
-
-                gipodUrl = 'https://api.gipod.vlaanderen.be/ws/v1/manifestation/%s?crs=WGS84' % m.data['gipodId']
-
-            if m.data['comment']:
-                description.append(m.data['comment'])
-            description.extend(hindrance.get('effects') or [])
-
-            items.append({
+            d = {
                 'id': m.uid,
-                'hash': m.uid,
-                'name': m.data['description'],
-                'lat': m.data['location']['coordinate']['coordinates'][1],
-                'lon': m.data['location']['coordinate']['coordinates'][0],
-                'description': '\n'.join(description),
+                'location': {
+                    'coordinates': {
+                        'lat': m.data['location']['coordinate']['coordinates'][1],
+                        'lon': m.data['location']['coordinate']['coordinates'][0],
+                    }
+                },
                 'icon': icon,
-                'links': {
-                    'map': '%s/plugins/gipod/test?mode=detail_map&uid=%s' % (config.base_url, m.uid),
-                    'gipod': gipodUrl
-                }
-            })
+                'title': m.data['description']
+            }
+            d['location']['geometry'] = []
+            if  m.data['location']['geometry']['type'] == 'Polygon':
+                coords = []
+                for c1 in  m.data['location']['geometry']['coordinates']:
+                    for c in c1:
+                        coords.append({'lat': c[1], 'lon': c[0]})
+                d['location']['geometry'].append({
+                    'visible': 'zoomed',
+                    'color': '#FF0000',
+                    'type': 'Polygon',
+                    'coordinates': [coords]
+                })
+
+            elif  m.data['location']['geometry']['type'] == 'MultiPolygon':
+                multi_coords = []
+                for l1 in m.data['location']['geometry']['coordinates']:
+                    coords = []
+                    for l2 in l1:
+                        for c in l2:
+                            coords.append({'lat': c[1], 'lon': c[0]})
+                    if coords:
+                        multi_coords.append(coords)
+
+                d['location']['geometry'].append({
+                    'visible': 'zoomed',
+                    'color': '#FF0000',
+                    'type': 'MultiPolygon',
+                    'coordinates': multi_coords
+                })
+
+            d['detail'] = dict(sections=[])
+            effects = hindrance.get('effects') or []
+            if effects:
+                d['detail']['sections'].append({
+                    'title': 'Hinderance',
+                    'description': '\n'.join(effects)
+                })
+            diversions = m.data.get('diversions') or []
+            if diversions:
+                for i, diversion in enumerate(diversions):
+                    diversions_message = []
+                    diversion_types = diversion.get('diversionTypes') or []
+                    if diversion_types:
+                        diversions_message.append('This diversion is valid for:\n%s' % ('\n'.join(diversion_types)))
+                    diversion_streets = diversion.get('streets') or []
+                    if diversion_streets:
+                        diversions_message.append('You can also follow the following streets:\n%s' % ('\n'.join(diversion_streets)))
+                    coords = []
+                    if  diversion['geometry']['type'] == 'LineString':
+                        for c in  diversion['geometry']['coordinates']:
+                            coords.append({'lat': c[1], 'lon': c[0]})
+
+                    d['detail']['sections'].append({
+                        'title': 'Diversion %s' % (i + 1),
+                        'description': '\n'.join(diversions_message),
+                        'geometry': {
+                            'color': '#00FF00',
+                            'type': 'LineString',
+                            'coordinates': [coords]
+                        }
+                    })
+
+            if extras and m.uid in extras:
+                periods_message = []
+                for p in extras[m.uid]['periods']:
+                    tmp_start_date = datetime.utcfromtimestamp(p['start'])
+                    tmp_end_date = datetime.utcfromtimestamp(p['end'])
+
+                    if tmp_start_date.time():
+                        tmp_start_date_str = tmp_start_date.strftime("%d/%m %H:%M")
+                    else:
+                        tmp_start_date_str = tmp_start_date.strftime("%d/%m")
+
+                    if tmp_end_date.time():
+                        tmp_end_date_str = tmp_end_date.strftime("%d/%m %H:%M")
+                    else:
+                        tmp_end_date_str = tmp_end_date.strftime("%d/%m")
+
+                    periods_message.append('Van %s tot %s' % (tmp_start_date_str, tmp_end_date_str))
+                if periods_message:
+                    d['detail']['sections'].append({
+                        'title': 'Periods',
+                        'description': '\n'.join(periods_message)
+                    })
+
+            items.append(d)
         except:
             logging.debug('uid: %s', m.uid)
             raise
 
     return items
 
-# def _get_item_detail_with_distance(details):
-#     base_lat = details['location']['coordinate']['coordinates'][1]
-#     base_lng = details['location']['coordinate']['coordinates'][0]
-#
-#     if details['location']['geometry']['type'] == 'Polygon':
-#         max_distance = _get_max_distance_polygon(details, base_lat, base_lng)
-#     elif details['location']['geometry']['type'] == 'MultiPolygon':
-#         max_distance = _get_max_distance_multipolygon(details, base_lat, base_lng)
-#     else:
-#         logging.error('unknown coordinates type: %s', details['location']['geometry']['type'])
-#         max_distance = 100
-#
-#     return details, max_distance
-#
-#
-# def _get_max_distance_multipolygon(details, base_lat, base_lng):
-#     max_distance = 100
-#     for c1 in details['location']['geometry']['coordinates']:
-#         for c in c1:
-#             for coords in c:
-#                 lat = coords[1]
-#                 lng = coords[0]
-#
-#                 distance = long(haversine(lng, lat, base_lng, base_lat) * 1000)
-#                 if distance > max_distance:
-#                     max_distance = distance
-#
-#     return max_distance
-#
-#
-# def _get_max_distance_polygon(details, base_lat, base_lng):
-#     max_distance = 100
-#     for c in details['location']['geometry']['coordinates']:
-#         for coords in c:
-#             lat = coords[1]
-#             lng = coords[0]
-#
-#             distance = long(haversine(lng, lat, base_lng, base_lat) * 1000)
-#             if distance > max_distance:
-#                 max_distance = distance
-#
-#     return max_distance
+
+def _get_items_ids(self, results, new_cursor):
+    ids = set()
+    for result in results:
+        uid = result.fields[0].value
+        parts = uid.split('-')
+
+        if len(parts) == 2:
+            type_, gipod_id = parts
+        else:
+            type_, gipod_id, _ = parts
+
+        item_id = '%s-%s' % (type_, gipod_id)
+        ids.add(item_id)
+
+    logging.debug('got %s search results', len(ids))
+    self.response.out.write(json.dumps({'ids': list(ids), 'cursor': new_cursor}))
+
+
+def _get_items_full(self, results, new_cursor):
+    keys = set()
+    item_dates = {}
+    for result in results:
+        uid = result.fields[0].value
+        parts = uid.split('-')
+
+        if len(parts) == 2:
+            type_, gipod_id = parts
+        else:
+            type_, gipod_id, _ = parts
+
+        item_id = '%s-%s' % (type_, gipod_id)
+        if type_ == 'w':
+            keys.add(WorkAssignment.create_key(WorkAssignment.TYPE, gipod_id))
+        elif type_ == 'm':
+            keys.add(Manifestation.create_key(Manifestation.TYPE, gipod_id))
+
+        if item_id not in item_dates:
+            item_dates[item_id] = {'periods': []}
+
+        period = {
+            'start': get_epoch_from_datetime(result.fields[1].value),
+            'end': get_epoch_from_datetime(result.fields[2].value)
+        }
+
+        item_dates[item_id]['periods'].append(period)
+
+    items = []
+    if keys:
+        models = ndb.get_multi(keys)
+        items.extend(_make_search_results(models, extras=item_dates))
+    else:
+        items = []
+
+    logging.debug('got %s search results', len(items))
+    self.response.out.write(json.dumps({'items': items, 'cursor': new_cursor}))
+
+
+def _get_items(self, is_new=False):
+    headers = {}
+    headers['Content-Type'] = 'application/json'
+    headers['Accept'] = 'application/json'
+    self.response.headers = headers
+
+    lat = self.request.get('lat')
+    lng = self.request.get('lon')
+    distance = self.request.get('distance')
+    start = self.request.get('start')
+    end = self.request.get('end')
+    limit = self.request.get('limit')
+    cursor = self.request.get('cursor', None)
+
+    if lat and lng and distance and start and end and limit:
+        try:
+            lat = float(lat)
+            lng = float(lng)
+            distance = long(distance)
+            limit = long(limit)
+            if limit > 1000:
+                limit = 1000
+        except:
+            logging.debug('not all parameters where provided correctly', exc_info=True)
+            self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+            return
+    else:
+        logging.debug('not all parameters where provided')
+        self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+        return
+
+    r = find_items(lat, lng, distance, start=start, end=end, cursor=cursor, limit=limit, is_new=is_new)
+    if not r:
+        logging.debug('no search results')
+        self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+        return
+
+    results, new_cursor = r
+    if is_new:
+        _get_items_ids(self, results, new_cursor)
+    else:
+        _get_items_full(self, results, new_cursor)
+
+
+class AuthValidationHandler(webapp2.RequestHandler):
+
+    def dispatch(self):
+        consumer_key = self.request.headers.get('consumer_key', None)
+        if not consumer_key:
+            self.abort(401)
+            return
+        c = Consumer.create_key(consumer_key).get()
+        if not c:
+            self.abort(401)
+            return
+
+        return super(AuthValidationHandler, self).dispatch()
+
+
+class GipodItemsHandler(AuthValidationHandler):
+
+    def get(self):
+        _get_items(self, is_new=False)
+
+
+class GipodNewItemsHandler(AuthValidationHandler):
+
+    def get(self):
+        _get_items(self, is_new=True)

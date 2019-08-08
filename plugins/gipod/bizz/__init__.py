@@ -56,7 +56,7 @@ def re_index_all():
     re_index_all_manifestations()
 
 
-def find_items(lat, lng, distance, start=None, cursor=None, limit=10):
+def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, is_new=False):
 
     def get_location_sort_options(lat_, lon_, distance_):
         loc_expr = "distance(location, geopoint(%f, %f))" % (lat_, lon_)
@@ -75,7 +75,12 @@ def find_items(lat, lng, distance, start=None, cursor=None, limit=10):
             start_date = start
         if lat and lng and distance:
             q = "distance(location, geopoint(%f, %f)) < %f" % (lat, lng, distance)
-            if start_date:
+            if start_date and end:
+                if is_new:
+                    q += ' AND start_datetime >= %s AND start_datetime < %s' % (start_date, end)
+                else:
+                    q += ' AND ((start_datetime >= %s AND start_datetime < %s) OR (start_datetime < %s AND end_datetime > %s))' % (start_date, end, start_date, start_date)
+            elif start_date:
                 if start == 'future':
                     q += ' AND start_datetime >= %s' % start_date
                 else:
@@ -91,7 +96,7 @@ def find_items(lat, lng, distance, start=None, cursor=None, limit=10):
             return None
 
         query = search.Query(query_string=q,
-                             options=search.QueryOptions(returned_fields=['id', 'location'],
+                             options=search.QueryOptions(returned_fields=['id', 'start_datetime', 'end_datetime'],
                                                          sort_options=sort_options,
                                                          limit=limit,
                                                          cursor=search.Cursor(cursor)))
@@ -103,3 +108,39 @@ def find_items(lat, lng, distance, start=None, cursor=None, limit=10):
         logging.error('Search query error', exc_info=True)
 
     return None
+
+
+def get_workassignment_icon(important=False):
+    if important:
+        return 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/important_32.png'
+    return 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/nonimportant_32.png'
+
+
+def get_manifestation_icon(event_type=None):
+    if not event_type:
+        pass
+    elif event_type == '(Werf)kraan':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/(werf)kraan_32.png'
+    elif event_type == 'Betoging':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/betoging_32.png'
+    elif event_type == 'Container/Werfkeet':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/containerwerfkeet_32.png'
+    elif event_type == 'Feest/Kermis':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/feestkermis_32.png'
+    elif event_type == 'Markt':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/markt_32.png'
+    elif event_type == 'Speelstraat':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/speelstraat_32.png'
+    elif event_type == 'Sportwedstrijd':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/sportwedstrijd_32.png'
+    elif event_type == 'Stelling':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/stelling_32.png'
+    elif event_type == 'Terras':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/terras_32.png'
+    elif event_type == 'Verhuislift':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/verhuislift_32.png'
+    elif event_type == 'Wielerwedstrijd - gesloten criterium':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20gesloten%20criterium_32.png'
+    elif event_type == 'Wielerwedstrijd - open criterium':
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20open%20criterium_32.png'
+    return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/andere_32.png'

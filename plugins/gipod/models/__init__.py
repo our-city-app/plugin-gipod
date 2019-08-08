@@ -71,3 +71,17 @@ class WorkAssignment(BaseModel):
 
 class Manifestation(BaseModel):
     TYPE = BaseModel.TYPE_MANIFESTATION
+
+
+class Consumer(NdbModel):
+    NAMESPACE = NAMESPACE
+
+    ref = ndb.StringProperty(indexed=False)
+
+    @property
+    def consumer_key(self):
+        return self.key.id().decode('utf8')
+
+    @classmethod
+    def create_key(cls, consumer_key):
+        return ndb.Key(cls, consumer_key, namespace=cls.NAMESPACE)
