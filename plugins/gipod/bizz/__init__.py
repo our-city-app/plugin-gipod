@@ -20,6 +20,7 @@
 from datetime import datetime
 import json
 import logging
+import time
 import urllib
 
 from google.appengine.api import urlfetch, search
@@ -100,8 +101,10 @@ def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, 
                                                          sort_options=sort_options,
                                                          limit=limit,
                                                          cursor=search.Cursor(cursor)))
-
+        start_time = time.time()
         search_result = the_index.search(query)
+        took_time = time.time() - start_time
+        logging.info('Search took {0:.3f}s'.format(took_time))
         if search_result.results:
             return search_result.results, search_result.cursor.web_safe_string if search_result.cursor else None
     except:
