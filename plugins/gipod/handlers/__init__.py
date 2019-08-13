@@ -36,12 +36,12 @@ def _make_search_results(models, extras=None):
     for m in models:
         try:
             hindrance = m.data.get('hindrance') or {}
-            icon = None
+            icon_url, icon_color = None
 
             if m.TYPE == 'w':
-                icon = get_workassignment_icon(hindrance.get('important', False))
+                icon_url, icon_color = get_workassignment_icon(hindrance.get('important', False))
             elif m.TYPE == 'm':
-                icon = get_manifestation_icon(m.data['eventType'])
+                icon_url, icon_color = get_manifestation_icon(m.data['eventType'])
 
             d = {
                 'id': m.uid,
@@ -51,7 +51,10 @@ def _make_search_results(models, extras=None):
                         'lon': m.data['location']['coordinate']['coordinates'][0],
                     }
                 },
-                'icon': icon,
+                'icon': {
+                    'icon': icon_url,
+                    'color': icon_color
+                },
                 'title': m.data['description']
             }
             d['location']['geometry'] = []
@@ -214,11 +217,11 @@ def _get_items(self, is_new=False):
     lng = self.request.get('lon')
     distance = self.request.get('distance')
     start = self.request.get('start')
-    end = self.request.get('end')
+    end = self.request.get('end', None)
     limit = self.request.get('limit')
     cursor = self.request.get('cursor', None)
 
-    if lat and lng and distance and start and end and limit:
+    if lat and lng and distance and start and limit:
         try:
             lat = float(lat)
             lng = float(lng)

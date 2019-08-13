@@ -189,7 +189,7 @@ def _make_search_results_demo(models):
                 description.append('Start: %s' % m.data['startDateTime'])
                 description.append('End: %s' % m.data['endDateTime'])
 
-                icon = get_workassignment_icon(hindrance.get('important', False))
+                icon, _ = get_workassignment_icon(hindrance.get('important', False))
                 gipodUrl = 'https://api.gipod.vlaanderen.be/ws/v1/workassignment/%s?crs=WGS84' % m.data['gipodId']
 
             elif m.TYPE == 'm':
@@ -200,7 +200,7 @@ def _make_search_results_demo(models):
                     description.append('Start: %s' % p['startDateTime'])
                     description.append('End: %s' % p['endDateTime'])
 
-                icon = get_manifestation_icon(m.data['eventType'])
+                icon, _ = get_manifestation_icon(m.data['eventType'])
                 gipodUrl = 'https://api.gipod.vlaanderen.be/ws/v1/manifestation/%s?crs=WGS84' % m.data['gipodId']
 
             if m.data['comment']:

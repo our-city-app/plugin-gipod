@@ -115,35 +115,36 @@ def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, 
 
 def get_workassignment_icon(important=False):
     if important:
-        return 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/important_32.png'
-    return 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/nonimportant_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/important_32.png', '#f1373f'
+    return 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/nonimportant_32.png', '#edb42b'
 
 
 def get_manifestation_icon(event_type=None):
+    icon_color = '#283384'
     if not event_type:
         pass
     elif event_type == '(Werf)kraan':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/(werf)kraan_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/(werf)kraan_32.png', icon_color
     elif event_type == 'Betoging':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/betoging_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/betoging_32.png', icon_color
     elif event_type == 'Container/Werfkeet':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/containerwerfkeet_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/containerwerfkeet_32.png', icon_color
     elif event_type == 'Feest/Kermis':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/feestkermis_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/feestkermis_32.png', icon_color
     elif event_type == 'Markt':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/markt_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/markt_32.png', icon_color
     elif event_type == 'Speelstraat':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/speelstraat_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/speelstraat_32.png', icon_color
     elif event_type == 'Sportwedstrijd':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/sportwedstrijd_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/sportwedstrijd_32.png', icon_color
     elif event_type == 'Stelling':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/stelling_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/stelling_32.png', icon_color
     elif event_type == 'Terras':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/terras_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/terras_32.png', icon_color
     elif event_type == 'Verhuislift':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/verhuislift_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/verhuislift_32.png', icon_color
     elif event_type == 'Wielerwedstrijd - gesloten criterium':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20gesloten%20criterium_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20gesloten%20criterium_32.png', icon_color
     elif event_type == 'Wielerwedstrijd - open criterium':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20open%20criterium_32.png'
-    return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/andere_32.png'
+        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20open%20criterium_32.png', icon_color
+    return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/andere_32.png', icon_color
