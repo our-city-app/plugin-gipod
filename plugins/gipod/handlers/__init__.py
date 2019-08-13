@@ -36,7 +36,7 @@ def _make_search_results(models, extras=None):
     for m in models:
         try:
             hindrance = m.data.get('hindrance') or {}
-            icon_url, icon_color = None
+            icon_url = icon_color = None
 
             if m.TYPE == 'w':
                 icon_url, icon_color = get_workassignment_icon(hindrance.get('important', False))
@@ -52,7 +52,7 @@ def _make_search_results(models, extras=None):
                     }
                 },
                 'icon': {
-                    'icon': icon_url,
+                    'url': icon_url,
                     'color': icon_color
                 },
                 'title': m.data['description']
