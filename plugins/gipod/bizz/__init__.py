@@ -25,7 +25,7 @@ import urllib
 
 from google.appengine.api import urlfetch, search
 
-from plugins.gipod.plugin_consts import GIPOD_API_URL, SYNC_QUEUE
+from plugins.gipod.plugin_consts import GIPOD_API_URL, SYNC_QUEUE, NAMESPACE
 from plugins.gipod.utils import drop_index
 
 LOCATION_INDEX = 'LOCATION_INDEX'
@@ -114,37 +114,41 @@ def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, 
 
 
 def get_workassignment_icon(important=False):
+    from framework.plugin_loader import get_config
+    config = get_config(NAMESPACE)
     if important:
-        return 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/important_32.png', '#f1373f'
-    return 'https://api.gipod.vlaanderen.be/Icons/WorkAssignment/nonimportant_32.png', '#edb42b'
+        return '%s/static/plugins/gipod/icons/WorkAssignment/important_32.png' % config.base_url, '#f10812'
+    return '%s/static/plugins/gipod/icons/WorkAssignment/nonimportant_32.png' % config.base_url, '#eeb309'
 
 
 def get_manifestation_icon(event_type=None):
-    icon_color = '#283384'
+    from framework.plugin_loader import get_config
+    config = get_config(NAMESPACE)
+    icon_color = '#263583'
     if not event_type:
         pass
     elif event_type == '(Werf)kraan':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/(werf)kraan_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/(werf)kraan_32.png' % config.base_url, icon_color
     elif event_type == 'Betoging':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/betoging_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/betoging_32.png' % config.base_url, icon_color
     elif event_type == 'Container/Werfkeet':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/containerwerfkeet_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/containerwerfkeet_32.png' % config.base_url, icon_color
     elif event_type == 'Feest/Kermis':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/feestkermis_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/feestkermis_32.png' % config.base_url, icon_color
     elif event_type == 'Markt':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/markt_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/markt_32.png' % config.base_url, icon_color
     elif event_type == 'Speelstraat':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/speelstraat_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/speelstraat_32.png' % config.base_url, icon_color
     elif event_type == 'Sportwedstrijd':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/sportwedstrijd_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/sportwedstrijd_32.png' % config.base_url, icon_color
     elif event_type == 'Stelling':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/stelling_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/stelling_32.png' % config.base_url, icon_color
     elif event_type == 'Terras':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/terras_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/terras_32.png' % config.base_url, icon_color
     elif event_type == 'Verhuislift':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/verhuislift_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/verhuislift_32.png' % config.base_url, icon_color
     elif event_type == 'Wielerwedstrijd - gesloten criterium':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20gesloten%20criterium_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/wielerwedstrijd%20-%20gesloten%20criterium_32.png' % config.base_url, icon_color
     elif event_type == 'Wielerwedstrijd - open criterium':
-        return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/wielerwedstrijd%20-%20open%20criterium_32.png', icon_color
-    return 'https://api.gipod.vlaanderen.be/Icons/Manifestation/andere_32.png', icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/wielerwedstrijd%20-%20open%20criterium_32.png' % config.base_url, icon_color
+    return '%s/static/plugins/gipod/icons/Manifestation/andere_32.png' % config.base_url, icon_color
