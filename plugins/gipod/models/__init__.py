@@ -85,3 +85,16 @@ class Consumer(NdbModel):
     @classmethod
     def create_key(cls, consumer_key):
         return ndb.Key(cls, consumer_key, namespace=cls.NAMESPACE)
+    
+
+class ElasticsearchSettings(NdbModel):
+    NAMESPACE = NAMESPACE
+
+    base_url = ndb.StringProperty(indexed=False)
+
+    auth_username = ndb.StringProperty(indexed=False)
+    auth_password = ndb.StringProperty(indexed=False)
+
+    @classmethod
+    def create_key(cls):
+        return ndb.Key(cls, u'ElasticsearchSettings', namespace=cls.NAMESPACE)

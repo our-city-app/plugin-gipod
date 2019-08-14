@@ -29,6 +29,7 @@ from framework.utils.cloud_tasks import create_task, run_tasks
 from mcfw.consts import DEBUG
 from mcfw.rpc import returns, arguments
 from plugins.gipod.bizz import do_request, LOCATION_INDEX
+from plugins.gipod.bizz.elasticsearch import index_doc, delete_docs
 from plugins.gipod.models import WorkAssignmentSettings, WorkAssignment
 from plugins.gipod.plugin_consts import SYNC_QUEUE
 
@@ -92,17 +93,23 @@ def _update_one(gipod_id, skip_if_exists=False):
 
 
 @returns([search.Document])
-@arguments(m_key=ndb.Key)
-def re_index(m_key):
+@arguments(m_key=ndb.Key, index_types=[unicode])
+def re_index(m_key, index_types=None):
     m = m_key.get()
-    return re_index_workassignment(m)
+    return re_index_workassignment(m, index_types=index_types)
 
 
 @returns([search.Document])
-@arguments(workassignment=WorkAssignment)
-def re_index_workassignment(workassignment):
+@arguments(workassignment=WorkAssignment, index_types=[unicode])
+def re_index_workassignment(workassignment, index_types=None):
+    if not index_types:
+        index_types = ['search', 'elasticsearch']
+
     the_index = search.Index(name=LOCATION_INDEX)
-    the_index.delete(workassignment.search_keys)
+    if 'search' in index_types:
+        the_index.delete(workassignment.search_keys)
+    if 'elasticsearch' in index_types:
+        delete_docs(workassignment.search_keys)
 
     if 'start_date' in workassignment._properties:
         del workassignment._properties['start_date']
@@ -135,17 +142,36 @@ def re_index_workassignment(workassignment):
 
     workassignment.put()
     m_doc = search.Document(doc_id=uid, fields=fields)
-    the_index.put(m_doc)
+
+    doc = {
+        "location": {
+            "lat": workassignment.data['location']['coordinate']['coordinates'][1],
+            "lon": workassignment.data['location']['coordinate']['coordinates'][0]
+        },
+        "start_date": start_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "end_date": end_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "time_frame": {
+            "gte" : start_date.strftime("%Y-%m-%d %H:%M:%S"),
+            "lte" : end_date.strftime("%Y-%m-%d %H:%M:%S")
+        }
+    }
+
+    if not index_types:
+        index_types = ['search', 'elasticsearch']
+    if 'search' in index_types:
+        the_index.put(m_doc)
+    if 'elasticsearch' in index_types:
+        index_doc(uid, doc)
 
     return [m_doc]
 
 
-def re_index_all():
-    run_job(re_index_query, [], re_index_worker, [])
+def re_index_all(index_types=None):
+    run_job(re_index_query, [], re_index_worker, [index_types])
 
 
-def re_index_worker(m_key):
-    re_index(m_key)
+def re_index_worker(m_key, index_types=None):
+    re_index(m_key, index_types=index_types)
 
 
 def re_index_query():

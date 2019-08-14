@@ -28,6 +28,7 @@ import webapp2
 from framework.utils import get_epoch_from_datetime
 from plugins.gipod.bizz import find_items, get_workassignment_icon, \
     get_manifestation_icon
+from plugins.gipod.bizz.elasticsearch import search_new, search_current
 from plugins.gipod.models import WorkAssignment, Manifestation, Consumer
 
 
@@ -122,8 +123,8 @@ def _make_search_results(models, extras=None):
             if extras and m.uid in extras:
                 periods_message = []
                 for p in extras[m.uid]['periods']:
-                    tmp_start_date = datetime.utcfromtimestamp(p['start'])
-                    tmp_end_date = datetime.utcfromtimestamp(p['end'])
+                    tmp_start_date = p['start']
+                    tmp_end_date = p['end']
 
                     if tmp_start_date.time():
                         tmp_start_date_str = tmp_start_date.strftime("%d/%m %H:%M")
@@ -190,8 +191,8 @@ def _get_items_full(self, results, new_cursor):
             item_dates[item_id] = {'periods': []}
 
         period = {
-            'start': get_epoch_from_datetime(result.fields[1].value),
-            'end': get_epoch_from_datetime(result.fields[2].value)
+            'start': result.fields[1].value,
+            'end': result.fields[2].value
         }
 
         item_dates[item_id]['periods'].append(period)
@@ -220,6 +221,7 @@ def _get_items(self, is_new=False):
     end = self.request.get('end', None)
     limit = self.request.get('limit')
     cursor = self.request.get('cursor', None)
+    index_type = self.request.get('index_type', None)
 
     if lat and lng and distance and start and limit:
         try:
@@ -238,17 +240,24 @@ def _get_items(self, is_new=False):
         self.response.out.write(json.dumps({'items': [], 'cursor': None}))
         return
 
-    r = find_items(lat, lng, distance, start=start, end=end, cursor=cursor, limit=limit, is_new=is_new)
-    if not r:
-        logging.debug('no search results')
-        self.response.out.write(json.dumps({'items': [], 'cursor': None}))
-        return
-
-    results, new_cursor = r
-    if is_new:
-        _get_items_ids(self, results, new_cursor)
+    if index_type and index_type == 'elasticsearch':
+        if is_new:
+            r = search_new(lat, lng, distance, start, end, cursor=cursor, limit=limit)
+        else:
+            r = search_current(lat, lng, distance, start, end, cursor=cursor, limit=limit)
+        self.response.out.write(json.dumps(r))
     else:
-        _get_items_full(self, results, new_cursor)
+        r = find_items(lat, lng, distance, start=start, end=end, cursor=cursor, limit=limit, is_new=is_new)
+        if not r:
+            logging.debug('no search results')
+            self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+            return
+
+        results, new_cursor = r
+        if is_new:
+            _get_items_ids(self, results, new_cursor)
+        else:
+            _get_items_full(self, results, new_cursor)
 
 
 class AuthValidationHandler(webapp2.RequestHandler):

@@ -29,6 +29,7 @@ from framework.utils.cloud_tasks import create_task, run_tasks
 from mcfw.consts import DEBUG
 from mcfw.rpc import returns, arguments
 from plugins.gipod.bizz import do_request, LOCATION_INDEX
+from plugins.gipod.bizz.elasticsearch import index_docs, delete_docs
 from plugins.gipod.models import ManifestationSettings, Manifestation
 from plugins.gipod.plugin_consts import SYNC_QUEUE
 
@@ -92,17 +93,23 @@ def _update_one(gipod_id, skip_if_exists=False):
 
 
 @returns([search.Document])
-@arguments(m_key=ndb.Key)
-def re_index(m_key):
+@arguments(m_key=ndb.Key, index_types=[unicode])
+def re_index(m_key, index_types=None):
     m = m_key.get()
-    return re_index_manifestation(m)
+    return re_index_manifestation(m, index_types=index_types)
 
 
 @returns([search.Document])
-@arguments(manifestation=Manifestation)
-def re_index_manifestation(manifestation):
+@arguments(manifestation=Manifestation, index_types=[unicode])
+def re_index_manifestation(manifestation, index_types=None):
+    if not index_types:
+        index_types = ['search', 'elasticsearch']
+
     the_index = search.Index(name=LOCATION_INDEX)
-    the_index.delete(manifestation.search_keys)
+    if 'search' in index_types:
+        the_index.delete(manifestation.search_keys)
+    if 'elasticsearch' in index_types:
+        delete_docs(manifestation.search_keys)
 
     if 'next_start_date' in manifestation._properties:
         del manifestation._properties['next_start_date']
@@ -114,8 +121,8 @@ def re_index_manifestation(manifestation):
 
     manifestation.cleanup_date = None
     manifestation.search_keys = []
+    m_docs = []
     docs = []
-
     now_ = datetime.utcnow()
 
     for i, p in enumerate(manifestation.data['periods']):
@@ -137,20 +144,37 @@ def re_index_manifestation(manifestation):
             search.DateField(name='end_datetime', value=end_date)
         ]
 
-        docs.append(search.Document(doc_id=uid, fields=fields))
+        m_docs.append(search.Document(doc_id=uid, fields=fields))
+
+        doc = {
+            "location": {
+                "lat": manifestation.data['location']['coordinate']['coordinates'][1],
+                "lon": manifestation.data['location']['coordinate']['coordinates'][0]
+            },
+            "start_date": start_date.strftime("%Y-%m-%d %H:%M:%S"),
+            "end_date": end_date.strftime("%Y-%m-%d %H:%M:%S"),
+            "time_frame": {
+                "gte" : start_date.strftime("%Y-%m-%d %H:%M:%S"),
+                "lte" : end_date.strftime("%Y-%m-%d %H:%M:%S")
+            }
+        }
+
+        docs.append({'uid': uid, 'data': doc})
 
     manifestation.put()
-    if docs:
-        the_index.put(docs)
-    return docs
+    if 'search' in index_types and m_docs:
+        the_index.put(m_docs)
+    if 'elasticsearch' in index_types and docs:
+        index_docs(docs)
+    return m_docs
 
 
-def re_index_all():
-    run_job(re_index_query, [], re_index_worker, [])
+def re_index_all(index_types=None):
+    run_job(re_index_query, [], re_index_worker, [index_types])
 
 
-def re_index_worker(m_key):
-    re_index(m_key)
+def re_index_worker(m_key, index_types=None):
+    re_index(m_key, index_types=index_types)
 
 
 def re_index_query():
