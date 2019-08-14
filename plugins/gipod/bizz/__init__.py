@@ -57,7 +57,7 @@ def re_index_all():
     re_index_all_manifestations()
 
 
-def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, is_new=False):
+def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, is_new=False, is_test=False):
 
     def get_location_sort_options(lat_, lon_, distance_):
         loc_expr = "distance(location, geopoint(%f, %f))" % (lat_, lon_)
@@ -82,7 +82,7 @@ def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, 
                 else:
                     q += ' AND ((start_datetime >= %s AND start_datetime < %s) OR (start_datetime < %s AND end_datetime > %s))' % (start_date, end, start_date, start_date)
             elif start_date:
-                if start == 'future':
+                if start == 'future' or not is_test:
                     q += ' AND start_datetime >= %s' % start_date
                 else:
                     q += ' AND start_datetime: %s' % start_date

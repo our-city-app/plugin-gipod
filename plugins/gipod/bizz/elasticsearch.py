@@ -195,7 +195,17 @@ def _search(lat, lon, distance, start, end, cursor, limit, is_new=False):
                     }
                 ]
             }
-        }
+        },
+        "sort" : [
+            {"_geo_distance" : {
+                "location" : {
+                    "lat" : lat,
+                    "lon" : lon
+                },
+                "order" : "asc",
+                "unit" : "m"}
+            }
+        ]
     }
     if is_new:
         d['query']['bool']['filter'].append({
@@ -208,13 +218,20 @@ def _search(lat, lon, distance, start, end, cursor, limit, is_new=False):
             }
         })
     else:
+        if start and end:
+            tf = {
+                "gte" : start,
+                "lte" : end,
+                "relation" : "intersects"
+            }
+        else:
+            tf = {
+                "gte" : start,
+                "relation" : "intersects"
+            }
         d['query']['bool']['filter'].append({
             "range": {
-                "time_frame" : {
-                    "gte" : start,
-                    "lte" : end,
-                    "relation" : "intersects"
-                 }
+                "time_frame" : tf
             }
         })
 

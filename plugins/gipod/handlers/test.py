@@ -68,7 +68,7 @@ class GipodTestHandler(webapp2.RequestHandler):
         cursor = self.request.get('cursor', None)
         start_date = self.request.get('start', None)
 
-        r = find_items(lat, lng, distance, start=start_date, cursor=cursor, limit=100)
+        r = find_items(lat, lng, distance, start=start_date, cursor=cursor, limit=100, is_test=True)
         if not r:
             logging.debug('not search results')
             self.response.out.write(json.dumps({'items': [], 'cursor': None}))
