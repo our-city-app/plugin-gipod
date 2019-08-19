@@ -148,7 +148,7 @@ def get_manifestation_icon(event_type=None):
     elif event_type == 'Verhuislift':
         return '%s/static/plugins/gipod/icons/Manifestation/verhuislift_32.png' % config.base_url, icon_color
     elif event_type == 'Wielerwedstrijd - gesloten criterium':
-        return '%s/static/plugins/gipod/icons/Manifestation/wielerwedstrijd%20-%20gesloten%20criterium_32.png' % config.base_url, icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/wielerwedstrijd - gesloten criterium_32.png' % config.base_url, icon_color
     elif event_type == 'Wielerwedstrijd - open criterium':
-        return '%s/static/plugins/gipod/icons/Manifestation/wielerwedstrijd%20-%20open%20criterium_32.png' % config.base_url, icon_color
+        return '%s/static/plugins/gipod/icons/Manifestation/wielerwedstrijd - open criterium_32.png' % config.base_url, icon_color
     return '%s/static/plugins/gipod/icons/Manifestation/andere_32.png' % config.base_url, icon_color

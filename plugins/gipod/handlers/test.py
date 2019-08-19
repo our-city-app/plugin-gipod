@@ -19,6 +19,7 @@
 
 import json
 import logging
+import urllib
 
 from google.appengine.ext import ndb
 import webapp2
@@ -189,7 +190,8 @@ def _make_search_results_demo(models):
                 description.append('Start: %s' % m.data['startDateTime'])
                 description.append('End: %s' % m.data['endDateTime'])
 
-                icon, _ = get_workassignment_icon(hindrance.get('important', False))
+                icon_url_unquoted, _ = get_workassignment_icon(hindrance.get('important', False))
+                icon = urllib.quote(icon_url_unquoted)
                 gipodUrl = 'https://api.gipod.vlaanderen.be/ws/v1/workassignment/%s?crs=WGS84' % m.data['gipodId']
 
             elif m.TYPE == 'm':
@@ -200,7 +202,8 @@ def _make_search_results_demo(models):
                     description.append('Start: %s' % p['startDateTime'])
                     description.append('End: %s' % p['endDateTime'])
 
-                icon, _ = get_manifestation_icon(m.data['eventType'])
+                icon_url_unquoted, _ = get_manifestation_icon(m.data['eventType'])
+                icon = urllib.quote(icon_url_unquoted)
                 gipodUrl = 'https://api.gipod.vlaanderen.be/ws/v1/manifestation/%s?crs=WGS84' % m.data['gipodId']
 
             if m.data['comment']:
