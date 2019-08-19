@@ -71,7 +71,7 @@ def _make_search_results(models, extras=None):
                     'coordinates': [coords]
                 })
 
-            elif  m.data['location']['geometry']['type'] == 'MultiPolygon':
+            elif m.data['location']['geometry']['type'] == 'MultiPolygon':
                 multi_coords = []
                 for l1 in m.data['location']['geometry']['coordinates']:
                     coords = []
@@ -120,6 +120,7 @@ def _make_search_results(models, extras=None):
                         }
                     })
 
+            description_message = []
             if extras and m.uid in extras:
                 periods_message = []
                 for p in extras[m.uid]['periods']:
@@ -136,12 +137,22 @@ def _make_search_results(models, extras=None):
                     else:
                         tmp_end_date_str = tmp_end_date.strftime("%d/%m")
 
+                    if tmp_start_date.date() == tmp_end_date.date():
+                        description_message.append('Op %s' % (tmp_start_date.strftime("%d/%m")))
+                    else:
+                        description_message.append('Van %s tot %s' % (tmp_start_date.strftime("%d/%m"), tmp_end_date.strftime("%d/%m")))
+
                     periods_message.append('Van %s tot %s' % (tmp_start_date_str, tmp_end_date_str))
                 if periods_message:
                     d['detail']['sections'].append({
                         'title': 'Periods',
                         'description': '\n'.join(periods_message)
                     })
+                if description_message:
+                    if effects:
+                        description_message.append('')
+                        description_message.extend(effects)
+                    d['description'] = '\n'.join(description_message)
 
             items.append(d)
         except:
@@ -233,11 +244,17 @@ def _get_items(self, is_new=False):
                 limit = 1000
         except:
             logging.debug('not all parameters where provided correctly', exc_info=True)
-            self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+            if is_new:
+                self.response.out.write(json.dumps({'ids': [], 'cursor': None}))
+            else:
+                self.response.out.write(json.dumps({'items': [], 'cursor': None}))
             return
     else:
         logging.debug('not all parameters where provided')
-        self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+        if is_new:
+            self.response.out.write(json.dumps({'ids': [], 'cursor': None}))
+        else:
+            self.response.out.write(json.dumps({'items': [], 'cursor': None}))
         return
 
     if index_type and index_type == 'elasticsearch':
@@ -250,7 +267,10 @@ def _get_items(self, is_new=False):
         r = find_items(lat, lng, distance, start=start, end=end, cursor=cursor, limit=limit, is_new=is_new)
         if not r:
             logging.debug('no search results')
-            self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+            if is_new:
+                self.response.out.write(json.dumps({'ids': [], 'cursor': None}))
+            else:
+                self.response.out.write(json.dumps({'items': [], 'cursor': None}))
             return
 
         results, new_cursor = r
