@@ -40,11 +40,9 @@ def _make_search_results(models, extras=None):
             icon_url = icon_color = None
 
             if m.TYPE == 'w':
-                icon_url_unquoted, icon_color = get_workassignment_icon(hindrance.get('important', False))
+                icon_url, icon_color = get_workassignment_icon(hindrance.get('important', False))
             elif m.TYPE == 'm':
-                icon_url_unquoted, icon_color = get_manifestation_icon(m.data['eventType'])
-
-            icon_url = urllib.quote(icon_url_unquoted)
+                icon_url, icon_color = get_manifestation_icon(m.data['eventType'])
 
             d = {
                 'id': m.uid,

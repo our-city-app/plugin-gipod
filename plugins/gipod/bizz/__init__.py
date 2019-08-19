@@ -117,38 +117,45 @@ def get_workassignment_icon(important=False):
     from framework.plugin_loader import get_config
     config = get_config(NAMESPACE)
     if important:
-        return '%s/static/plugins/gipod/icons/WorkAssignment/important_32.png' % config.base_url, '#f10812'
-    return '%s/static/plugins/gipod/icons/WorkAssignment/nonimportant_32.png' % config.base_url, '#eeb309'
+        path, color = '/static/plugins/gipod/icons/WorkAssignment/important_32.png', '#f10812'
+    else:
+        path, color = '/static/plugins/gipod/icons/WorkAssignment/nonimportant_32.png', '#eeb309'
+
+    return config.base_url + urllib.quote(path), color
 
 
 def get_manifestation_icon(event_type=None):
     from framework.plugin_loader import get_config
     config = get_config(NAMESPACE)
     icon_color = '#263583'
+    path = None
     if not event_type:
         pass
     elif event_type == '(Werf)kraan':
-        return '%s/static/plugins/gipod/icons/Manifestation/(werf)kraan_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/(werf)kraan_32.png'
     elif event_type == 'Betoging':
-        return '%s/static/plugins/gipod/icons/Manifestation/betoging_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/betoging_32.png'
     elif event_type == 'Container/Werfkeet':
-        return '%s/static/plugins/gipod/icons/Manifestation/containerwerfkeet_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/containerwerfkeet_32.png'
     elif event_type == 'Feest/Kermis':
-        return '%s/static/plugins/gipod/icons/Manifestation/feestkermis_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/feestkermis_32.png'
     elif event_type == 'Markt':
-        return '%s/static/plugins/gipod/icons/Manifestation/markt_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/markt_32.png'
     elif event_type == 'Speelstraat':
-        return '%s/static/plugins/gipod/icons/Manifestation/speelstraat_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/speelstraat_32.png'
     elif event_type == 'Sportwedstrijd':
-        return '%s/static/plugins/gipod/icons/Manifestation/sportwedstrijd_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/sportwedstrijd_32.png'
     elif event_type == 'Stelling':
-        return '%s/static/plugins/gipod/icons/Manifestation/stelling_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/stelling_32.png'
     elif event_type == 'Terras':
-        return '%s/static/plugins/gipod/icons/Manifestation/terras_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/terras_32.png'
     elif event_type == 'Verhuislift':
-        return '%s/static/plugins/gipod/icons/Manifestation/verhuislift_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/verhuislift_32.png'
     elif event_type == 'Wielerwedstrijd - gesloten criterium':
-        return '%s/static/plugins/gipod/icons/Manifestation/wielerwedstrijd - gesloten criterium_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/wielerwedstrijd - gesloten criterium_32.png'
     elif event_type == 'Wielerwedstrijd - open criterium':
-        return '%s/static/plugins/gipod/icons/Manifestation/wielerwedstrijd - open criterium_32.png' % config.base_url, icon_color
-    return '%s/static/plugins/gipod/icons/Manifestation/andere_32.png' % config.base_url, icon_color
+        path = '/static/plugins/gipod/icons/Manifestation/wielerwedstrijd - open criterium_32.png'
+    else:
+        path = '/static/plugins/gipod/icons/Manifestation/andere_32.png'
+
+    return config.base_url + urllib.quote(path), icon_color
