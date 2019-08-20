@@ -96,7 +96,7 @@ def _make_search_results(models, extras=None):
             effects = hindrance.get('effects') or []
             if effects:
                 d['detail']['sections'].append({
-                    'title': 'Hinderance',
+                    'title': 'Hinder',
                     'description': '\n'.join(effects)
                 })
             diversions = m.data.get('diversions') or []
@@ -105,17 +105,17 @@ def _make_search_results(models, extras=None):
                     diversions_message = []
                     diversion_types = diversion.get('diversionTypes') or []
                     if diversion_types:
-                        diversions_message.append('This diversion is valid for:\n%s' % ('\n'.join(diversion_types)))
+                        diversions_message.append('Deze omleiding is geldig voor:\n%s' % ('\n'.join(diversion_types)))
                     diversion_streets = diversion.get('streets') or []
                     if diversion_streets:
-                        diversions_message.append('You can also follow the following streets:\n%s' % ('\n'.join(diversion_streets)))
+                        diversions_message.append('U kan ook volgende straten volgen:\n%s' % ('\n'.join(diversion_streets)))
                     coords = []
                     if  diversion['geometry']['type'] == 'LineString':
                         for c in  diversion['geometry']['coordinates']:
                             coords.append({'lat': c[1], 'lon': c[0]})
 
                     d['detail']['sections'].append({
-                        'title': 'Diversion %s' % (i + 1),
+                        'title': 'Omleiding %s' % (i + 1),
                         'description': '\n'.join(diversions_message),
                         'geometry': {
                             'color': '#00FF00',
@@ -149,7 +149,7 @@ def _make_search_results(models, extras=None):
                     periods_message.append('Van %s tot %s' % (tmp_start_date_str, tmp_end_date_str))
                 if periods_message:
                     d['detail']['sections'].append({
-                        'title': 'Periods',
+                        'title': None,
                         'description': '\n'.join(periods_message)
                     })
                 if description_message:
@@ -222,11 +222,21 @@ def _get_items_full(self, results, new_cursor):
 
 
 def return_ids_result(self, ids, new_cursor):
+    headers = {}
+    headers['Content-Type'] = 'application/json'
+    headers['Accept'] = 'application/json'
+    self.response.headers = headers
+
     logging.debug('got %s search results', len(ids))
     self.response.out.write(json.dumps({'ids': ids, 'cursor': new_cursor}))
 
 
 def return_items_result(self, items, new_cursor):
+    headers = {}
+    headers['Content-Type'] = 'application/json'
+    headers['Accept'] = 'application/json'
+    self.response.headers = headers
+
     logging.debug('got %s search results', len(items))
     config = get_config(NAMESPACE)
     base_urls = {
@@ -237,19 +247,16 @@ def return_items_result(self, items, new_cursor):
 
 
 def _get_items(self, is_new=False):
-    headers = {}
-    headers['Content-Type'] = 'application/json'
-    headers['Accept'] = 'application/json'
-    self.response.headers = headers
+    params = json.loads(self.request.body) if self.request.body else {}
 
-    lat = self.request.get('lat')
-    lng = self.request.get('lon')
-    distance = self.request.get('distance')
-    start = self.request.get('start')
-    end = self.request.get('end', None)
-    limit = self.request.get('limit')
-    cursor = self.request.get('cursor', None)
-    index_type = self.request.get('index_type', None)
+    lat = params.get('lat')
+    lng = params.get('lon')
+    distance = params.get('distance')
+    start = params.get('start')
+    end = params.get('end', None)
+    limit = params.get('limit')
+    cursor = params.get('cursor', None)
+    index_type = params.get('index_type', None)
 
     if lat and lng and distance and start and limit:
         try:
@@ -298,6 +305,49 @@ def _get_items(self, is_new=False):
             _get_items_full(self, results, new_cursor)
 
 
+def return_detail_result(self, items):
+    headers = {}
+    headers['Content-Type'] = 'application/json'
+    headers['Accept'] = 'application/json'
+    self.response.headers = headers
+
+    logging.debug('got %s results', len(items))
+    self.response.out.write(json.dumps({'items': items}))
+
+
+def _get_details(self):
+    params = json.loads(self.request.body) if self.request.body else {}
+    ids = params.get('ids')
+    if not ids:
+        return_detail_result(self, [])
+        return
+    if type(ids) is not list:
+        return_detail_result(self, [])
+        return
+    # todo add start, end for periods ???
+
+    keys = set()
+    for uid in ids:
+        parts = uid.split('-')
+        if len(parts) != 2:
+            continue
+        type_, gipod_id = parts
+
+        if type_ == 'w':
+            keys.add(WorkAssignment.create_key(WorkAssignment.TYPE, gipod_id))
+        elif type_ == 'm':
+            keys.add(Manifestation.create_key(Manifestation.TYPE, gipod_id))
+
+    items = []
+    if keys:
+        models = ndb.get_multi(keys)
+        items.extend(_make_search_results(models))
+    else:
+        items = []
+
+    return_detail_result(self, items)
+
+
 class AuthValidationHandler(webapp2.RequestHandler):
 
     def dispatch(self):
@@ -315,17 +365,20 @@ class AuthValidationHandler(webapp2.RequestHandler):
 
 class GipodItemsHandler(AuthValidationHandler):
 
-    def get(self):
+    def post(self):
+        logging.debug(self.request.body)
         _get_items(self, is_new=False)
 
 
 class GipodNewItemsHandler(AuthValidationHandler):
 
-    def get(self):
+    def post(self):
+        logging.debug(self.request.body)
         _get_items(self, is_new=True)
 
 
 class GipodItemDetailsHandler(AuthValidationHandler):
 
-    def get(self):
-        pass
+    def post(self):
+        logging.debug(self.request.body)
+        _get_details(self)
