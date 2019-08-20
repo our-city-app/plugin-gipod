@@ -121,7 +121,7 @@ def search_new(lat, lon, distance, start, end, cursor=None, limit=10):
         item_id = '%s-%s' % (type_, gipod_id)
         ids.add(item_id)
 
-    return {'cursor': new_cursor, 'ids': list(ids)}
+    return list(ids), new_cursor
 
 
 def search_current(lat, lon, distance, start, end, cursor=None, limit=10):
@@ -163,7 +163,7 @@ def search_current(lat, lon, distance, start, end, cursor=None, limit=10):
     else:
         items = []
 
-    return {'cursor': new_cursor, 'items': items}
+    return items, new_cursor
 
 
 def _search(lat, lon, distance, start, end, cursor, limit, is_new=False):

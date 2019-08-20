@@ -25,24 +25,28 @@ import urllib
 from google.appengine.ext import ndb
 import webapp2
 
+from framework.plugin_loader import get_config
 from framework.utils import get_epoch_from_datetime
 from plugins.gipod.bizz import find_items, get_workassignment_icon, \
     get_manifestation_icon
 from plugins.gipod.bizz.elasticsearch import search_new, search_current
 from plugins.gipod.models import WorkAssignment, Manifestation, Consumer
+from plugins.gipod.plugin_consts import NAMESPACE
 
 
 def _make_search_results(models, extras=None):
     items = []
     for m in models:
         try:
+            icon_id = icon_color = None
             hindrance = m.data.get('hindrance') or {}
-            icon_url = icon_color = None
 
             if m.TYPE == 'w':
-                icon_url, icon_color = get_workassignment_icon(hindrance.get('important', False))
+                icon_id, icon_color = get_workassignment_icon(hindrance.get('important', False))
             elif m.TYPE == 'm':
-                icon_url, icon_color = get_manifestation_icon(m.data['eventType'])
+                icon_id, icon_color = get_manifestation_icon(m.data['eventType'])
+            else:
+                raise Exception('Unknown type: %s', m.TYPE)
 
             d = {
                 'id': m.uid,
@@ -53,7 +57,7 @@ def _make_search_results(models, extras=None):
                     }
                 },
                 'icon': {
-                    'url': icon_url,
+                    'id': icon_id,
                     'color': icon_color
                 },
                 'title': m.data['description']
@@ -176,8 +180,7 @@ def _get_items_ids(self, results, new_cursor):
         item_id = '%s-%s' % (type_, gipod_id)
         ids.add(item_id)
 
-    logging.debug('got %s search results', len(ids))
-    self.response.out.write(json.dumps({'ids': list(ids), 'cursor': new_cursor}))
+    return_ids_result(self, list(ids), new_cursor)
 
 
 def _get_items_full(self, results, new_cursor):
@@ -215,8 +218,22 @@ def _get_items_full(self, results, new_cursor):
     else:
         items = []
 
+    return_items_result(self, items, new_cursor)
+
+
+def return_ids_result(self, ids, new_cursor):
+    logging.debug('got %s search results', len(ids))
+    self.response.out.write(json.dumps({'ids': ids, 'cursor': new_cursor}))
+
+
+def return_items_result(self, items, new_cursor):
     logging.debug('got %s search results', len(items))
-    self.response.out.write(json.dumps({'items': items, 'cursor': new_cursor}))
+    config = get_config(NAMESPACE)
+    base_urls = {
+        'icon_pin': '%s/static/plugins/gipod/icons/pin' % config.base_url,
+        'icon_transparent': '%s/static/plugins/gipod/icons/transparent' % config.base_url
+    }
+    self.response.out.write(json.dumps({'items': items, 'cursor': new_cursor, 'base_urls': base_urls}))
 
 
 def _get_items(self, is_new=False):
@@ -245,32 +262,33 @@ def _get_items(self, is_new=False):
         except:
             logging.debug('not all parameters where provided correctly', exc_info=True)
             if is_new:
-                self.response.out.write(json.dumps({'ids': [], 'cursor': None}))
+                return_ids_result(self, [], None)
             else:
-                self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+                return_items_result(self, [], None)
             return
     else:
         logging.debug('not all parameters where provided')
         if is_new:
-            self.response.out.write(json.dumps({'ids': [], 'cursor': None}))
+            return_ids_result(self, [], None)
         else:
-            self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+            return_items_result(self, [], None)
         return
 
     if index_type and index_type == 'elasticsearch':
         if is_new:
-            r = search_new(lat, lng, distance, start, end, cursor=cursor, limit=limit)
+            ids, new_cursor = search_new(lat, lng, distance, start, end, cursor=cursor, limit=limit)
+            return_ids_result(self, ids, new_cursor)
         else:
-            r = search_current(lat, lng, distance, start, end, cursor=cursor, limit=limit)
-        self.response.out.write(json.dumps(r))
+            items, new_cursor = search_current(lat, lng, distance, start, end, cursor=cursor, limit=limit)
+            return_items_result(self, items, new_cursor)
     else:
         r = find_items(lat, lng, distance, start=start, end=end, cursor=cursor, limit=limit, is_new=is_new)
         if not r:
             logging.debug('no search results')
             if is_new:
-                self.response.out.write(json.dumps({'ids': [], 'cursor': None}))
+                return_ids_result(self, [], None)
             else:
-                self.response.out.write(json.dumps({'items': [], 'cursor': None}))
+                return_items_result(self, [], None)
             return
 
         results, new_cursor = r
@@ -305,3 +323,9 @@ class GipodNewItemsHandler(AuthValidationHandler):
 
     def get(self):
         _get_items(self, is_new=True)
+
+
+class GipodItemDetailsHandler(AuthValidationHandler):
+
+    def get(self):
+        pass
