@@ -64,20 +64,23 @@ class MapItemDetailTO(TO):
 
 class MapItemTO(TO):
     id = unicode_property('1')
-    location = typed_property('2', MapItemLocationTO, False)
+    coords = typed_property('2', GeoPointTO, False)
     icon = typed_property('3', MapIconTO, False)
     title = unicode_property('4')
     description = unicode_property('5')
-    detail = typed_property('6', MapItemDetailTO, False)
 
 
-class MapBaseUrlsTO(TO):
-    icon_pin = unicode_property('1')
-    icon_transparent = unicode_property('1')
+class MapItemDetailsTO(TO):
+    id = unicode_property('1')
+    geometry = typed_property('2', MapGeometryTO, True)
+    detail = typed_property('3', MapItemDetailTO, False)
 
 
 class GetMapItemsResponseTO(TO):
     cursor = unicode_property('1')
     items = typed_property('2', MapItemTO, True)
     distance = long_property('3')
-    base_urls = typed_property('4', MapBaseUrlsTO, False)
+
+
+class GetMapItemDetailsResponseTO(TO):
+    items = typed_property('1', MapItemDetailsTO, True)

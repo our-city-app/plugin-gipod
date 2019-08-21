@@ -186,6 +186,7 @@ def cleanup_worker(m_key):
 
 
 def cleanup_query():
+    # todo check if this included cleanup_date == None
     qry = Manifestation.query()
     qry = qry.filter(Manifestation.cleanup_date < datetime.utcnow())
     return qry

@@ -26,6 +26,9 @@ import urllib
 from google.appengine.api import urlfetch, search
 
 from plugins.gipod.plugin_consts import GIPOD_API_URL, SYNC_QUEUE
+from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, \
+    MapItemDetailTO, MapGeometryCoordsListTO, MapGeometryTO, \
+    MapItemDetailSectionTO
 from plugins.gipod.utils import drop_index
 
 LOCATION_INDEX = 'LOCATION_INDEX'
@@ -149,3 +152,154 @@ def get_manifestation_icon(event_type=None):
     elif event_type == 'Wielerwedstrijd - open criterium':
         return 'cycling_line', icon_color
     return 'other', icon_color
+
+
+def convert_to_item_tos(models, extras=None):
+    items = []
+    for m in models:
+        try:
+            items.append(convert_to_item_to(m, extras))
+        except:
+            logging.debug('uid: %s', m.uid)
+            raise
+
+    return items
+
+
+def convert_to_item_to(m, extras=None):
+    hindrance = m.data.get('hindrance') or {}
+
+    if m.TYPE == 'w':
+        icon_id, icon_color = get_workassignment_icon(hindrance.get('important', False))
+    elif m.TYPE == 'm':
+        icon_id, icon_color = get_manifestation_icon(m.data['eventType'])
+    else:
+        raise Exception('Unknown type: %s', m.TYPE)
+
+    effects = hindrance.get('effects') or []
+
+    description_message = []
+    if extras and m.uid in extras:
+        for p in extras[m.uid]['periods']:
+            tmp_start_date = p['start']
+            tmp_end_date = p['end']
+
+            if tmp_start_date.date() == tmp_end_date.date():
+                description_message.append('Op %s' % (tmp_start_date.strftime("%d/%m")))
+            else:
+                description_message.append('Van %s tot %s' % (tmp_start_date.strftime("%d/%m"), tmp_end_date.strftime("%d/%m")))
+
+        if description_message:
+            if effects:
+                description_message.append('')
+                description_message.extend(effects)
+
+    return MapItemTO(id=m.uid,
+                     coords=GeoPointTO(lat=m.data['location']['coordinate']['coordinates'][1],
+                                       lon=m.data['location']['coordinate']['coordinates'][0]),
+                     icon=MapIconTO(id=icon_id,
+                                    color=icon_color),
+                     title=m.data['description'],
+                     description=u'\n'.join(description_message) if description_message else None)
+
+
+def convert_to_item_details_tos(models):
+    items = []
+    for m in models:
+        try:
+            items.append(convert_to_item_details_to(m))
+        except:
+            logging.debug('uid: %s', m.uid)
+            raise
+
+    return items
+
+
+def convert_to_item_details_to(m):
+    to = MapItemDetailsTO(id=m.uid,
+                          geometry=[],
+                          detail=MapItemDetailTO(sections=[]))
+    
+    if  m.data['location']['geometry']['type'] == 'Polygon':
+        coords_list = MapGeometryCoordsListTO(coords=[])
+        for c1 in  m.data['location']['geometry']['coordinates']:
+            for c in c1:
+                coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+                
+        to.geometry.append(MapGeometryTO(type=u'Polygon',
+                                         color=u'#FF0000',
+                                         coords=[coords_list]))
+
+    elif m.data['location']['geometry']['type'] == 'MultiPolygon':
+        multi_coords = []
+        for l1 in m.data['location']['geometry']['coordinates']:
+            coords_list = MapGeometryCoordsListTO(coords=[])
+            for l2 in l1:
+                for c in l2:
+                    coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+            if coords_list.coords:
+                multi_coords.append(coords_list)
+
+        to.geometry.append(MapGeometryTO(type=u'MultiPolygon',
+                                         color=u'#FF0000',
+                                         coords=multi_coords))
+
+    # todo get all periods from start -> end
+#     if extras and m.uid in extras:
+#         periods_message = []
+#         for p in extras[m.uid]['periods']:
+#             tmp_start_date = p['start']
+#             tmp_end_date = p['end']
+#
+#             if tmp_start_date.time():
+#                 tmp_start_date_str = tmp_start_date.strftime("%d/%m %H:%M")
+#             else:
+#                 tmp_start_date_str = tmp_start_date.strftime("%d/%m")
+#
+#             if tmp_end_date.time():
+#                 tmp_end_date_str = tmp_end_date.strftime("%d/%m %H:%M")
+#             else:
+#                 tmp_end_date_str = tmp_end_date.strftime("%d/%m")
+#
+#             periods_message.append('Van %s tot %s' % (tmp_start_date_str, tmp_end_date_str))
+#         if periods_message:
+#             d['detail']['sections'].append({
+#                 'title': None,
+#                 'description': '\n'.join(periods_message)
+#             })
+
+    hindrance = m.data.get('hindrance') or {}
+    effects = hindrance.get('effects') or []
+    if effects:
+        to.detail.sections.append(MapItemDetailSectionTO(title=u'Hinder',
+                                                         description=u'\n'.join(effects),
+                                                         geometry=None))
+                                   
+    diversions = m.data.get('diversions') or []
+    if diversions:
+        for i, diversion in enumerate(diversions):
+            diversions_message = []
+            diversion_types = diversion.get('diversionTypes') or []
+            if diversion_types:
+                diversions_message.append('Deze omleiding is geldig voor:\n%s' % ('\n'.join(diversion_types)))
+            diversion_streets = diversion.get('streets') or []
+            if diversion_streets:
+                diversions_message.append('U kan ook volgende straten volgen:\n%s' % ('\n'.join(diversion_streets)))
+
+            coords_list = MapGeometryCoordsListTO(coords=[])
+            if  diversion['geometry']['type'] == 'LineString':
+                for c in  diversion['geometry']['coordinates']:
+                    coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+
+            if coords_list.coords:
+                geometry = MapGeometryTO(type=u'LineString',
+                                         color=u'#00FF00',
+                                         coords=[coords_list])
+            else:
+                geometry = None
+
+            to.detail.sections.append(MapItemDetailSectionTO(title=u'Omleiding %s' % (i + 1),
+                                                             description=u'\n'.join(diversions_message),
+                                                             geometry=geometry))
+
+    return to

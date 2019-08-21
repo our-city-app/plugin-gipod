@@ -125,7 +125,7 @@ def search_new(lat, lon, distance, start, end, cursor=None, limit=10):
 
 
 def search_current(lat, lon, distance, start, end, cursor=None, limit=10):
-    from  plugins.gipod.handlers import _make_search_results
+    from plugins.gipod.bizz import convert_to_item_tos
     new_cursor, result_data = _search(lat, lon, distance, start, end, cursor, limit, is_new=False)
     keys = set()
     item_dates = {}
@@ -159,7 +159,7 @@ def search_current(lat, lon, distance, start, end, cursor=None, limit=10):
     items = []
     if keys:
         models = ndb.get_multi(keys)
-        items.extend(_make_search_results(models, extras=item_dates))
+        items.extend(convert_to_item_tos(models, extras=item_dates))
     else:
         items = []
 

@@ -27,145 +27,145 @@ import webapp2
 
 from framework.plugin_loader import get_config
 from framework.utils import get_epoch_from_datetime
+from mcfw.rpc import serialize_complex_value
 from plugins.gipod.bizz import find_items, get_workassignment_icon, \
-    get_manifestation_icon
+    get_manifestation_icon, convert_to_item_tos, convert_to_item_details_tos
 from plugins.gipod.bizz.elasticsearch import search_new, search_current
 from plugins.gipod.models import WorkAssignment, Manifestation, Consumer
 from plugins.gipod.plugin_consts import NAMESPACE
+from plugins.gipod.to import GetMapItemDetailsResponseTO, GetMapItemsResponseTO
 
 
-def _make_search_results(models, extras=None):
-    items = []
-    for m in models:
-        try:
-            icon_id = icon_color = None
-            hindrance = m.data.get('hindrance') or {}
-
-            if m.TYPE == 'w':
-                icon_id, icon_color = get_workassignment_icon(hindrance.get('important', False))
-            elif m.TYPE == 'm':
-                icon_id, icon_color = get_manifestation_icon(m.data['eventType'])
-            else:
-                raise Exception('Unknown type: %s', m.TYPE)
-
-            d = {
-                'id': m.uid,
-                'location': {
-                    'coordinates': {
-                        'lat': m.data['location']['coordinate']['coordinates'][1],
-                        'lon': m.data['location']['coordinate']['coordinates'][0],
-                    }
-                },
-                'icon': {
-                    'id': icon_id,
-                    'color': icon_color
-                },
-                'title': m.data['description']
-            }
-            d['location']['geometry'] = []
-            if  m.data['location']['geometry']['type'] == 'Polygon':
-                coords = []
-                for c1 in  m.data['location']['geometry']['coordinates']:
-                    for c in c1:
-                        coords.append({'lat': c[1], 'lon': c[0]})
-                d['location']['geometry'].append({
-                    'visible': 'zoomed',
-                    'color': '#FF0000',
-                    'type': 'Polygon',
-                    'coordinates': [coords]
-                })
-
-            elif m.data['location']['geometry']['type'] == 'MultiPolygon':
-                multi_coords = []
-                for l1 in m.data['location']['geometry']['coordinates']:
-                    coords = []
-                    for l2 in l1:
-                        for c in l2:
-                            coords.append({'lat': c[1], 'lon': c[0]})
-                    if coords:
-                        multi_coords.append(coords)
-
-                d['location']['geometry'].append({
-                    'visible': 'zoomed',
-                    'color': '#FF0000',
-                    'type': 'MultiPolygon',
-                    'coordinates': multi_coords
-                })
-
-            d['detail'] = dict(sections=[])
-            effects = hindrance.get('effects') or []
-            if effects:
-                d['detail']['sections'].append({
-                    'title': 'Hinder',
-                    'description': '\n'.join(effects)
-                })
-            diversions = m.data.get('diversions') or []
-            if diversions:
-                for i, diversion in enumerate(diversions):
-                    diversions_message = []
-                    diversion_types = diversion.get('diversionTypes') or []
-                    if diversion_types:
-                        diversions_message.append('Deze omleiding is geldig voor:\n%s' % ('\n'.join(diversion_types)))
-                    diversion_streets = diversion.get('streets') or []
-                    if diversion_streets:
-                        diversions_message.append('U kan ook volgende straten volgen:\n%s' % ('\n'.join(diversion_streets)))
-                    coords = []
-                    if  diversion['geometry']['type'] == 'LineString':
-                        for c in  diversion['geometry']['coordinates']:
-                            coords.append({'lat': c[1], 'lon': c[0]})
-
-                    d['detail']['sections'].append({
-                        'title': 'Omleiding %s' % (i + 1),
-                        'description': '\n'.join(diversions_message),
-                        'geometry': {
-                            'color': '#00FF00',
-                            'type': 'LineString',
-                            'coordinates': [coords]
-                        }
-                    })
-
-            description_message = []
-            if extras and m.uid in extras:
-                periods_message = []
-                for p in extras[m.uid]['periods']:
-                    tmp_start_date = p['start']
-                    tmp_end_date = p['end']
-
-                    if tmp_start_date.time():
-                        tmp_start_date_str = tmp_start_date.strftime("%d/%m %H:%M")
-                    else:
-                        tmp_start_date_str = tmp_start_date.strftime("%d/%m")
-
-                    if tmp_end_date.time():
-                        tmp_end_date_str = tmp_end_date.strftime("%d/%m %H:%M")
-                    else:
-                        tmp_end_date_str = tmp_end_date.strftime("%d/%m")
-
-                    if tmp_start_date.date() == tmp_end_date.date():
-                        description_message.append('Op %s' % (tmp_start_date.strftime("%d/%m")))
-                    else:
-                        description_message.append('Van %s tot %s' % (tmp_start_date.strftime("%d/%m"), tmp_end_date.strftime("%d/%m")))
-
-                    periods_message.append('Van %s tot %s' % (tmp_start_date_str, tmp_end_date_str))
-                if periods_message:
-                    d['detail']['sections'].append({
-                        'title': None,
-                        'description': '\n'.join(periods_message)
-                    })
-                if description_message:
-                    if effects:
-                        description_message.append('')
-                        description_message.extend(effects)
-                    d['description'] = '\n'.join(description_message)
-
-            items.append(d)
-        except:
-            logging.debug('uid: %s', m.uid)
-            raise
-
-    return items
-
-
+# def _make_search_results(models, extras=None):
+#     items = []
+#     for m in models:
+#         try:
+#             icon_id = icon_color = None
+#             hindrance = m.data.get('hindrance') or {}
+#
+#             if m.TYPE == 'w':
+#                 icon_id, icon_color = get_workassignment_icon(hindrance.get('important', False))
+#             elif m.TYPE == 'm':
+#                 icon_id, icon_color = get_manifestation_icon(m.data['eventType'])
+#             else:
+#                 raise Exception('Unknown type: %s', m.TYPE)
+#
+#             d = {
+#                 'id': m.uid,
+#                 'location': {
+#                     'coordinates': {
+#                         'lat': m.data['location']['coordinate']['coordinates'][1],
+#                         'lon': m.data['location']['coordinate']['coordinates'][0],
+#                     }
+#                 },
+#                 'icon': {
+#                     'id': icon_id,
+#                     'color': icon_color
+#                 },
+#                 'title': m.data['description']
+#             }
+#             d['location']['geometry'] = []
+#             if  m.data['location']['geometry']['type'] == 'Polygon':
+#                 coords = []
+#                 for c1 in  m.data['location']['geometry']['coordinates']:
+#                     for c in c1:
+#                         coords.append({'lat': c[1], 'lon': c[0]})
+#                 d['location']['geometry'].append({
+#                     'visible': 'zoomed',
+#                     'color': '#FF0000',
+#                     'type': 'Polygon',
+#                     'coordinates': [coords]
+#                 })
+#
+#             elif m.data['location']['geometry']['type'] == 'MultiPolygon':
+#                 multi_coords = []
+#                 for l1 in m.data['location']['geometry']['coordinates']:
+#                     coords = []
+#                     for l2 in l1:
+#                         for c in l2:
+#                             coords.append({'lat': c[1], 'lon': c[0]})
+#                     if coords:
+#                         multi_coords.append(coords)
+#
+#                 d['location']['geometry'].append({
+#                     'visible': 'zoomed',
+#                     'color': '#FF0000',
+#                     'type': 'MultiPolygon',
+#                     'coordinates': multi_coords
+#                 })
+#
+#             d['detail'] = dict(sections=[])
+#             effects = hindrance.get('effects') or []
+#             if effects:
+#                 d['detail']['sections'].append({
+#                     'title': 'Hinder',
+#                     'description': '\n'.join(effects)
+#                 })
+#             diversions = m.data.get('diversions') or []
+#             if diversions:
+#                 for i, diversion in enumerate(diversions):
+#                     diversions_message = []
+#                     diversion_types = diversion.get('diversionTypes') or []
+#                     if diversion_types:
+#                         diversions_message.append('Deze omleiding is geldig voor:\n%s' % ('\n'.join(diversion_types)))
+#                     diversion_streets = diversion.get('streets') or []
+#                     if diversion_streets:
+#                         diversions_message.append('U kan ook volgende straten volgen:\n%s' % ('\n'.join(diversion_streets)))
+#                     coords = []
+#                     if  diversion['geometry']['type'] == 'LineString':
+#                         for c in  diversion['geometry']['coordinates']:
+#                             coords.append({'lat': c[1], 'lon': c[0]})
+#
+#                     d['detail']['sections'].append({
+#                         'title': 'Omleiding %s' % (i + 1),
+#                         'description': '\n'.join(diversions_message),
+#                         'geometry': {
+#                             'color': '#00FF00',
+#                             'type': 'LineString',
+#                             'coordinates': [coords]
+#                         }
+#                     })
+#
+#             description_message = []
+#             if extras and m.uid in extras:
+#                 periods_message = []
+#                 for p in extras[m.uid]['periods']:
+#                     tmp_start_date = p['start']
+#                     tmp_end_date = p['end']
+#
+#                     if tmp_start_date.time():
+#                         tmp_start_date_str = tmp_start_date.strftime("%d/%m %H:%M")
+#                     else:
+#                         tmp_start_date_str = tmp_start_date.strftime("%d/%m")
+#
+#                     if tmp_end_date.time():
+#                         tmp_end_date_str = tmp_end_date.strftime("%d/%m %H:%M")
+#                     else:
+#                         tmp_end_date_str = tmp_end_date.strftime("%d/%m")
+#
+#                     if tmp_start_date.date() == tmp_end_date.date():
+#                         description_message.append('Op %s' % (tmp_start_date.strftime("%d/%m")))
+#                     else:
+#                         description_message.append('Van %s tot %s' % (tmp_start_date.strftime("%d/%m"), tmp_end_date.strftime("%d/%m")))
+#
+#                     periods_message.append('Van %s tot %s' % (tmp_start_date_str, tmp_end_date_str))
+#                 if periods_message:
+#                     d['detail']['sections'].append({
+#                         'title': None,
+#                         'description': '\n'.join(periods_message)
+#                     })
+#                 if description_message:
+#                     if effects:
+#                         description_message.append('')
+#                         description_message.extend(effects)
+#                     d['description'] = '\n'.join(description_message)
+#
+#             items.append(d)
+#         except:
+#             logging.debug('uid: %s', m.uid)
+#             raise
+#
+#     return items
 def _get_items_ids(self, results, new_cursor):
     ids = set()
     for result in results:
@@ -183,7 +183,7 @@ def _get_items_ids(self, results, new_cursor):
     return_ids_result(self, list(ids), new_cursor)
 
 
-def _get_items_full(self, results, new_cursor):
+def _get_items_full(self, results, new_cursor, distance):
     keys = set()
     item_dates = {}
     for result in results:
@@ -214,11 +214,11 @@ def _get_items_full(self, results, new_cursor):
     items = []
     if keys:
         models = ndb.get_multi(keys)
-        items.extend(_make_search_results(models, extras=item_dates))
+        items.extend(convert_to_item_tos(models, extras=item_dates))
     else:
         items = []
 
-    return_items_result(self, items, new_cursor)
+    return_items_result(self, items, new_cursor, distance)
 
 
 def return_ids_result(self, ids, new_cursor):
@@ -231,19 +231,16 @@ def return_ids_result(self, ids, new_cursor):
     self.response.out.write(json.dumps({'ids': ids, 'cursor': new_cursor}))
 
 
-def return_items_result(self, items, new_cursor):
+def return_items_result(self, items, new_cursor, distance):
     headers = {}
     headers['Content-Type'] = 'application/json'
     headers['Accept'] = 'application/json'
     self.response.headers = headers
 
     logging.debug('got %s search results', len(items))
-    config = get_config(NAMESPACE)
-    base_urls = {
-        'icon_pin': '%s/static/plugins/gipod/icons/pin' % config.base_url,
-        'icon_transparent': '%s/static/plugins/gipod/icons/transparent' % config.base_url
-    }
-    self.response.out.write(json.dumps({'items': items, 'cursor': new_cursor, 'base_urls': base_urls}))
+    result_to = GetMapItemsResponseTO(cursor=new_cursor, items=items, distance=distance)
+    result = serialize_complex_value(result_to, GetMapItemsResponseTO, False)
+    self.response.out.write(json.dumps(result))
 
 
 def _get_items(self, is_new=False):
@@ -271,14 +268,14 @@ def _get_items(self, is_new=False):
             if is_new:
                 return_ids_result(self, [], None)
             else:
-                return_items_result(self, [], None)
+                return_items_result(self, [], None, distance)
             return
     else:
         logging.debug('not all parameters where provided')
         if is_new:
             return_ids_result(self, [], None)
         else:
-            return_items_result(self, [], None)
+            return_items_result(self, [], None, distance)
         return
 
     if index_type and index_type == 'elasticsearch':
@@ -287,7 +284,7 @@ def _get_items(self, is_new=False):
             return_ids_result(self, ids, new_cursor)
         else:
             items, new_cursor = search_current(lat, lng, distance, start, end, cursor=cursor, limit=limit)
-            return_items_result(self, items, new_cursor)
+            return_items_result(self, items, new_cursor, distance)
     else:
         r = find_items(lat, lng, distance, start=start, end=end, cursor=cursor, limit=limit, is_new=is_new)
         if not r:
@@ -302,7 +299,7 @@ def _get_items(self, is_new=False):
         if is_new:
             _get_items_ids(self, results, new_cursor)
         else:
-            _get_items_full(self, results, new_cursor)
+            _get_items_full(self, results, new_cursor, distance)
 
 
 def return_detail_result(self, items):
@@ -312,7 +309,9 @@ def return_detail_result(self, items):
     self.response.headers = headers
 
     logging.debug('got %s results', len(items))
-    self.response.out.write(json.dumps({'items': items}))
+    result_to = GetMapItemDetailsResponseTO(items=items)
+    result = serialize_complex_value(result_to, GetMapItemDetailsResponseTO, False)
+    self.response.out.write(json.dumps(result))
 
 
 def _get_details(self):
@@ -324,7 +323,10 @@ def _get_details(self):
     if type(ids) is not list:
         return_detail_result(self, [])
         return
-    # todo add start, end for periods ???
+
+    today = datetime.today().date()
+    start_date = str(today)
+    end_date = None
 
     keys = set()
     for uid in ids:
@@ -341,7 +343,7 @@ def _get_details(self):
     items = []
     if keys:
         models = ndb.get_multi(keys)
-        items.extend(_make_search_results(models))
+        items.extend(convert_to_item_details_tos(models))
     else:
         items = []
 
