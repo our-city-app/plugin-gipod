@@ -28,7 +28,8 @@ from framework.bizz.job import run_job
 from framework.utils.cloud_tasks import create_task, run_tasks
 from mcfw.consts import DEBUG
 from mcfw.rpc import returns, arguments
-from plugins.gipod.bizz import do_request, LOCATION_INDEX
+from plugins.gipod.bizz import do_request, LOCATION_INDEX, \
+    validate_data
 from plugins.gipod.bizz.elasticsearch import index_doc, delete_docs
 from plugins.gipod.models import WorkAssignmentSettings, WorkAssignment
 from plugins.gipod.plugin_consts import SYNC_QUEUE
@@ -89,6 +90,7 @@ def _update_one(gipod_id, skip_if_exists=False):
         m = WorkAssignment(key=m_key)
 
     m.data = do_request('/workassignment/%s' % gipod_id)
+    validate_data(m)
     re_index_workassignment(m)
 
 

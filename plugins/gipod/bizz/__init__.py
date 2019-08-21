@@ -115,6 +115,20 @@ def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, 
     return None
 
 
+def validate_data(m):
+    if m.TYPE == 'm':
+        get_manifestation_icon(m.data['eventType'])
+
+    if m.data['location']['geometry']['type'] not in ('Polygon', 'MultiPolygon',):
+        logging.error('Unknown geometry type: "%s" for %s', m.data['location']['geometry']['type'], m.uid)
+
+    diversions = m.data.get('diversions') or []
+    if diversions:
+        for diversion in diversions:
+            if  diversion['geometry']['type'] not in ('LineString',):
+                logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], m.uid)
+
+
 def get_workassignment_icon(important=False):
     if important:
         return 'important' , '#f10812'
