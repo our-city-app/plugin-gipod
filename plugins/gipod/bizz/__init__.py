@@ -187,16 +187,31 @@ def convert_to_item_to(m, extras=None):
 
     effects = hindrance.get('effects') or []
 
+    now_ = datetime.utcnow()
+
     description_message = []
     if extras and m.uid in extras:
         for p in extras[m.uid]['periods']:
-            tmp_start_date = p['start']
-            tmp_end_date = p['end']
+            start_date = p['start']
+            end_date = p['end']
 
-            if tmp_start_date.date() == tmp_end_date.date():
-                description_message.append('Op %s' % (tmp_start_date.strftime("%d/%m")))
+            if start_date.date() == end_date.date():
+                if start_date.year == now_.year:
+                    description_message.append('Op %s' % (start_date.strftime("%d/%m")))
+                else:
+                    description_message.append('Op %s' % (start_date.strftime("%d/%m/%Y")))
             else:
-                description_message.append('Van %s tot %s' % (tmp_start_date.strftime("%d/%m"), tmp_end_date.strftime("%d/%m")))
+                if start_date.year == now_.year:
+                    start_date_str = start_date.strftime("%d/%m")
+                else:
+                    start_date_str = start_date.strftime("%d/%m/%Y")
+
+                if end_date.year == now_.year:
+                    end_date_str = end_date.strftime("%d/%m")
+                else:
+                    end_date_str = end_date.strftime("%d/%m/%Y")
+
+                description_message.append('Van %s tot %s' % (start_date_str, end_date_str))
 
         if description_message:
             if effects:
@@ -280,14 +295,24 @@ def convert_to_item_details_to(m):
         periods_message = []
         for d in sorted_dates:
             if d['start'].time():
-                start_date_str = d['start'].strftime("%d/%m %H:%M")
-            else:
+                if today.year == d['start'].year:
+                    start_date_str = d['start'].strftime("%d/%m %H:%M")
+                else:
+                    start_date_str = d['start'].strftime("%d/%m/%Y %H:%M")
+            elif today.year == d['start'].year:
                 start_date_str = d['start'].strftime("%d/%m")
+            else:
+                start_date_str = d['start'].strftime("%d/%m/%Y")
 
             if d['end'].time():
-                end_date_str = d['end'].strftime("%d/%m %H:%M")
-            else:
+                if today.year == d['end'].year:
+                    end_date_str = d['end'].strftime("%d/%m %H:%M")
+                else:
+                    end_date_str = d['end'].strftime("%d/%m/%Y %H:%M")
+            elif today.year == d['end'].year:
                 end_date_str = d['end'].strftime("%d/%m")
+            else:
+                end_date_str = d['end'].strftime("%d/%m/%Y")
 
             periods_message.append('Van %s tot %s' % (start_date_str, end_date_str))
         
