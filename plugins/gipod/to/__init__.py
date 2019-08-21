@@ -58,10 +58,6 @@ class MapItemDetailSectionTO(TO):
     geometry = typed_property('3', MapGeometryTO, False)
 
 
-class MapItemDetailTO(TO):
-    sections = typed_property('1', MapItemDetailSectionTO, True)
-
-
 class MapItemTO(TO):
     id = unicode_property('1')
     coords = typed_property('2', GeoPointTO, False)
@@ -73,7 +69,7 @@ class MapItemTO(TO):
 class MapItemDetailsTO(TO):
     id = unicode_property('1')
     geometry = typed_property('2', MapGeometryTO, True)
-    detail = typed_property('3', MapItemDetailTO, False)
+    sections = typed_property('3', MapItemDetailSectionTO, True)
 
 
 class GetMapItemsResponseTO(TO):

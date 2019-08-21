@@ -27,8 +27,7 @@ from google.appengine.api import urlfetch, search
 
 from plugins.gipod.plugin_consts import GIPOD_API_URL, SYNC_QUEUE
 from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, \
-    MapItemDetailTO, MapGeometryCoordsListTO, MapGeometryTO, \
-    MapItemDetailSectionTO
+    MapGeometryCoordsListTO, MapGeometryTO, MapItemDetailSectionTO
 from plugins.gipod.utils import drop_index
 
 LOCATION_INDEX = 'LOCATION_INDEX'
@@ -218,7 +217,7 @@ def convert_to_item_details_tos(models):
 def convert_to_item_details_to(m):
     to = MapItemDetailsTO(id=m.uid,
                           geometry=[],
-                          detail=MapItemDetailTO(sections=[]))
+                          sections=[])
     
     if  m.data['location']['geometry']['type'] == 'Polygon':
         coords_list = MapGeometryCoordsListTO(coords=[])
@@ -271,9 +270,9 @@ def convert_to_item_details_to(m):
     hindrance = m.data.get('hindrance') or {}
     effects = hindrance.get('effects') or []
     if effects:
-        to.detail.sections.append(MapItemDetailSectionTO(title=u'Hinder',
-                                                         description=u'\n'.join(effects),
-                                                         geometry=None))
+        to.sections.append(MapItemDetailSectionTO(title=u'Hinder',
+                                                  description=u'\n'.join(effects),
+                                                  geometry=None))
                                    
     diversions = m.data.get('diversions') or []
     if diversions:
@@ -298,8 +297,8 @@ def convert_to_item_details_to(m):
             else:
                 geometry = None
 
-            to.detail.sections.append(MapItemDetailSectionTO(title=u'Omleiding %s' % (i + 1),
-                                                             description=u'\n'.join(diversions_message),
-                                                             geometry=geometry))
+            to.sections.append(MapItemDetailSectionTO(title=u'Omleiding %s' % (i + 1),
+                                                      description=u'\n'.join(diversions_message),
+                                                      geometry=geometry))
 
     return to
