@@ -141,10 +141,11 @@ def get_manifestation_icon(event_type=None):
 
     icon_color = '#263583'
     if event_type:
+        event_type = event_type.strip()
         if event_type in m:
             return m[event_type], icon_color
         else:
-            logging.error('Unknown manifestation type: %s', event_type)
+            logging.error('Unknown manifestation type: "%s"', event_type)
     return 'other', icon_color
 
 
@@ -238,7 +239,7 @@ def convert_to_item_details_to(m):
                                          color=u'#FF0000',
                                          coords=multi_coords))
     else:
-        logging.error('Unknown geometry type: %s for %s', m.data['location']['geometry']['type'], m.uid)
+        logging.error('Unknown geometry type: "%s" for %s', m.data['location']['geometry']['type'], m.uid)
 
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -303,7 +304,7 @@ def convert_to_item_details_to(m):
                 for c in  diversion['geometry']['coordinates']:
                     coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
             else:
-                logging.error('Unknown diversion geometry type: %s for %s', diversion['geometry']['type'], m.uid)
+                logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], m.uid)
 
             if coords_list.coords:
                 geometry = MapGeometryTO(type=u'LineString',
