@@ -291,6 +291,13 @@ def convert_to_item_details_to(m):
 
             periods_message.append('Van %s tot %s' % (start_date_str, end_date_str))
         
+        contactDetails = m.data.get('contactDetails') or {}
+        if contactDetails.get('organisation'):
+            if m.data.get('type'):
+                periods_message.append("%s - %s" % (m.data['type'], contactDetails['organisation']))
+            else:
+                periods_message.append("%s" % (contactDetails['organisation']))
+
         to.sections.append(MapItemDetailSectionTO(title=None,
                                                   description=u'\n'.join(periods_message),
                                                   geometry=None))
