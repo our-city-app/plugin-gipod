@@ -123,33 +123,28 @@ def get_workassignment_icon(important=False):
 
 
 def get_manifestation_icon(event_type=None):
+    m = {
+        '(Werf)kraan': 'crane',
+        'Andere': 'other',
+        'Betoging': 'manifestation',
+        'Container/Werfkeet': 'container',
+        'Feest/Kermis': 'balloon',
+        'Markt': 'basket',
+        'Speelstraat': 'play_street',
+        'Sportwedstrijd': 'cup',
+        'Stelling': 'ladder',
+        'Terras': 'glass_martini',
+        'Verhuislift': 'moving_lift',
+        'Wielerwedstrijd - gesloten criterium': 'cycling_circle',
+        'Wielerwedstrijd - open criterium': 'cycling_line'
+    }
+
     icon_color = '#263583'
-    if not event_type:
-        pass
-    elif event_type == '(Werf)kraan':
-        return 'crane', icon_color
-    elif event_type == 'Betoging':
-        return 'manifestation', icon_color
-    elif event_type == 'Container/Werfkeet':
-        return 'container', icon_color
-    elif event_type == 'Feest/Kermis':
-        return 'balloon', icon_color
-    elif event_type == 'Markt':
-        return 'basket', icon_color
-    elif event_type == 'Speelstraat':
-        return 'play_street', icon_color
-    elif event_type == 'Sportwedstrijd':
-        return 'cup', icon_color
-    elif event_type == 'Stelling':
-        return 'ladder', icon_color
-    elif event_type == 'Terras':
-        return 'glass_martini', icon_color
-    elif event_type == 'Verhuislift':
-        return 'moving_lift', icon_color
-    elif event_type == 'Wielerwedstrijd - gesloten criterium':
-        return 'cycling_circle', icon_color
-    elif event_type == 'Wielerwedstrijd - open criterium':
-        return 'cycling_line', icon_color
+    if event_type:
+        if event_type in m:
+            return m[event_type], icon_color
+        else:
+            logging.error('Unknown manifestation type: %s', event_type)
     return 'other', icon_color
 
 
@@ -242,30 +237,48 @@ def convert_to_item_details_to(m):
         to.geometry.append(MapGeometryTO(type=u'MultiPolygon',
                                          color=u'#FF0000',
                                          coords=multi_coords))
+    else:
+        logging.error('Unknown geometry type: %s for %s', m.data['location']['geometry']['type'], m.uid)
 
-    # todo get all periods from start -> end
-#     if extras and m.uid in extras:
-#         periods_message = []
-#         for p in extras[m.uid]['periods']:
-#             tmp_start_date = p['start']
-#             tmp_end_date = p['end']
-#
-#             if tmp_start_date.time():
-#                 tmp_start_date_str = tmp_start_date.strftime("%d/%m %H:%M")
-#             else:
-#                 tmp_start_date_str = tmp_start_date.strftime("%d/%m")
-#
-#             if tmp_end_date.time():
-#                 tmp_end_date_str = tmp_end_date.strftime("%d/%m %H:%M")
-#             else:
-#                 tmp_end_date_str = tmp_end_date.strftime("%d/%m")
-#
-#             periods_message.append('Van %s tot %s' % (tmp_start_date_str, tmp_end_date_str))
-#         if periods_message:
-#             d['detail']['sections'].append({
-#                 'title': None,
-#                 'description': '\n'.join(periods_message)
-#             })
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    dates = []
+    if m.TYPE == 'w':
+        start_date = datetime.strptime(m.data['startDateTime'], "%Y-%m-%dT%H:%M:%S")
+        end_date = datetime.strptime(m.data['endDateTime'], "%Y-%m-%dT%H:%M:%S")
+        dates.append({'start': start_date, 'end': end_date})
+    elif m.TYPE == 'm':
+        for i, p in enumerate(m.data['periods']):
+            end_date = datetime.strptime(p['endDateTime'], "%Y-%m-%dT%H:%M:%S")
+            if end_date < today:
+                continue
+            start_date = datetime.strptime(p['startDateTime'], "%Y-%m-%dT%H:%M:%S")
+
+            dates.append({'start': start_date, 'end': end_date})
+            if len(dates) > 2:
+                break
+    else:
+        raise Exception('Unknown type: %s', m.TYPE)
+
+    if dates:
+        sorted_dates = sorted(dates, key=lambda d: d['start'])
+        periods_message = []
+        for d in sorted_dates:
+            if d['start'].time():
+                start_date_str = d['start'].strftime("%d/%m %H:%M")
+            else:
+                start_date_str = d['start'].strftime("%d/%m")
+
+            if d['end'].time():
+                end_date_str = d['end'].strftime("%d/%m %H:%M")
+            else:
+                end_date_str = d['end'].strftime("%d/%m")
+
+            periods_message.append('Van %s tot %s' % (start_date_str, end_date_str))
+        
+        to.sections.append(MapItemDetailSectionTO(title=None,
+                                                  description=u'\n'.join(periods_message),
+                                                  geometry=None))
 
     hindrance = m.data.get('hindrance') or {}
     effects = hindrance.get('effects') or []
@@ -289,6 +302,8 @@ def convert_to_item_details_to(m):
             if  diversion['geometry']['type'] == 'LineString':
                 for c in  diversion['geometry']['coordinates']:
                     coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+            else:
+                logging.error('Unknown diversion geometry type: %s for %s', diversion['geometry']['type'], m.uid)
 
             if coords_list.coords:
                 geometry = MapGeometryTO(type=u'LineString',

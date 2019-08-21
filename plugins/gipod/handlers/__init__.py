@@ -324,10 +324,6 @@ def _get_details(self):
         return_detail_result(self, [])
         return
 
-    today = datetime.today().date()
-    start_date = str(today)
-    end_date = None
-
     keys = set()
     for uid in ids:
         parts = uid.split('-')
