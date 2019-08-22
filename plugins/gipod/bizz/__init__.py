@@ -123,7 +123,11 @@ def validate_data(m):
     if m.TYPE == 'm':
         get_manifestation_icon(m.data['eventType'])
 
-    if m.data['location']['geometry']['type'] not in ('Polygon', 'MultiPolygon',):
+    if m.data['location']['geometry']['type'] in ('GeometryCollection',):
+        for g in m.data['location']['geometry']['geometries']:
+            if g['type'] not in ('Polygon', 'MultiPolygon',):
+                logging.error('Unknown geometry collection type: "%s" for %s', g['type'], m.uid)
+    elif m.data['location']['geometry']['type'] not in ('Polygon', 'MultiPolygon',):
         logging.error('Unknown geometry type: "%s" for %s', m.data['location']['geometry']['type'], m.uid)
 
     diversions = m.data.get('diversions') or []
@@ -243,24 +247,19 @@ def convert_to_item_details_tos(models):
     return items
 
 
-def convert_to_item_details_to(m):
-    to = MapItemDetailsTO(id=m.uid,
-                          geometry=[],
-                          sections=[])
-    
-    if  m.data['location']['geometry']['type'] == 'Polygon':
+def get_geometry_to(data):
+    if data['type'] == 'Polygon':
         coords_list = MapGeometryCoordsListTO(coords=[])
-        for c1 in  m.data['location']['geometry']['coordinates']:
+        for c1 in data['coordinates']:
             for c in c1:
                 coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
-                
-        to.geometry.append(MapGeometryTO(type=u'Polygon',
-                                         color=u'#FF0000',
-                                         coords=[coords_list]))
 
-    elif m.data['location']['geometry']['type'] == 'MultiPolygon':
+        return MapGeometryTO(type=u'Polygon',
+                             color=u'#FF0000',
+                             coords=[coords_list])
+    elif data['type'] == 'MultiPolygon':
         multi_coords = []
-        for l1 in m.data['location']['geometry']['coordinates']:
+        for l1 in data['coordinates']:
             coords_list = MapGeometryCoordsListTO(coords=[])
             for l2 in l1:
                 for c in l2:
@@ -268,11 +267,35 @@ def convert_to_item_details_to(m):
             if coords_list.coords:
                 multi_coords.append(coords_list)
 
-        to.geometry.append(MapGeometryTO(type=u'MultiPolygon',
-                                         color=u'#FF0000',
-                                         coords=multi_coords))
+        return MapGeometryTO(type=u'MultiPolygon',
+                             color=u'#FF0000',
+                             coords=multi_coords)
     else:
-        logging.error('Unknown geometry type: "%s" for %s', m.data['location']['geometry']['type'], m.uid)
+        return None
+
+def get_geometry_tos(uid, data):
+    if data['type'] == 'Polygon':
+        return [get_geometry_to(data)]
+    elif data['type'] == 'MultiPolygon':
+        return [get_geometry_to(data)]
+    elif data['type'] == 'GeometryCollection':
+        l = []
+        for g in data['geometries']:
+            to = get_geometry_to(g)
+            if to:
+                l.append(to)
+            else:
+                logging.error('Unknown geometry collection  type: "%s" for %s', g['type'], uid)
+        return l
+    
+    else:
+        logging.error('Unknown geometry type: "%s" for %s', data['type'], uid)
+
+
+def convert_to_item_details_to(m):
+    to = MapItemDetailsTO(id=m.uid,
+                          geometry=get_geometry_tos(m.uid, m.data['location']['geometry']),
+                          sections=[])
 
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
