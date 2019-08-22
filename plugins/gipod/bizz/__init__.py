@@ -129,7 +129,7 @@ def validate_data(m):
     diversions = m.data.get('diversions') or []
     if diversions:
         for diversion in diversions:
-            if  diversion['geometry']['type'] not in ('LineString',):
+            if  diversion['geometry']['type'] not in ('LineString', 'MultiLineString',):
                 logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], m.uid)
 
 
@@ -348,20 +348,31 @@ def convert_to_item_details_to(m):
             diversion_streets = diversion.get('streets') or []
             if diversion_streets:
                 diversions_message.append('U kan ook volgende straten volgen:\n%s' % ('\n'.join(diversion_streets)))
-
-            coords_list = MapGeometryCoordsListTO(coords=[])
+            
+            geometry = None
             if  diversion['geometry']['type'] == 'LineString':
+                coords_list = MapGeometryCoordsListTO(coords=[])
                 for c in  diversion['geometry']['coordinates']:
                     coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+                if coords_list.coords:
+                    geometry = MapGeometryTO(type=u'LineString',
+                                             color=u'#00FF00',
+                                             coords=[coords_list])
+            elif  diversion['geometry']['type'] == 'MultiLineString':
+                multi_coords = []
+                for l1 in diversion['geometry']['coordinates']:
+                    coords_list = MapGeometryCoordsListTO(coords=[])
+                    for c in l1:
+                        coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+                    if coords_list.coords:
+                        multi_coords.append(coords_list)
+                if multi_coords:
+                    geometry = MapGeometryTO(type=u'MultiLineString',
+                                             color=u'#00FF00',
+                                             coords=multi_coords)
             else:
                 logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], m.uid)
 
-            if coords_list.coords:
-                geometry = MapGeometryTO(type=u'LineString',
-                                         color=u'#00FF00',
-                                         coords=[coords_list])
-            else:
-                geometry = None
 
             to.sections.append(MapItemDetailSectionTO(title=u'Omleiding %s' % (i + 1),
                                                       description=u'\n'.join(diversions_message),
