@@ -164,7 +164,6 @@ def search_current(lat, lon, distance, start, end, cursor=None, limit=10):
     took_time = time.time() - start_time
     logging.info('debugging.search_current hits {0:.3f}s'.format(took_time))
 
-    items = []
     if keys:
         start_time = time.time()
         models = ndb.get_multi(keys)
@@ -172,7 +171,7 @@ def search_current(lat, lon, distance, start, end, cursor=None, limit=10):
         logging.info('debugging.search_current ndb.get_multi {0:.3f}s'.format(took_time))
 
         start_time = time.time()
-        items.extend(convert_to_item_tos(models, extras=item_dates))
+        items = convert_to_item_tos(models, extras=item_dates)
         took_time = time.time() - start_time
         logging.info('debugging.search_current convert_to_item_tos {0:.3f}s'.format(took_time))
     else:

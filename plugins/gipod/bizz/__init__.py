@@ -173,9 +173,10 @@ def get_manifestation_icon(event_type=None):
 
 def convert_to_item_tos(models, extras=None):
     items = []
+    now_ = datetime.utcnow()
     for m in models:
         try:
-            items.append(convert_to_item_to(m, extras))
+            items.append(convert_to_item_to(m, now_, extras))
         except:
             logging.debug('uid: %s', m.uid)
             raise
@@ -183,7 +184,7 @@ def convert_to_item_tos(models, extras=None):
     return items
 
 
-def convert_to_item_to(m, extras=None):
+def convert_to_item_to(m, now_, extras=None):
     hindrance = m.data.get('hindrance') or {}
 
     if m.TYPE == 'w':
@@ -194,8 +195,6 @@ def convert_to_item_to(m, extras=None):
         raise Exception('Unknown type: %s', m.TYPE)
 
     effects = hindrance.get('effects') or []
-
-    now_ = datetime.utcnow()
 
     description_message = []
     if extras and m.uid in extras:
