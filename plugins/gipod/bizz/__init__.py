@@ -33,7 +33,7 @@ from plugins.gipod.utils import drop_index
 LOCATION_INDEX = 'LOCATION_INDEX'
 
 
-def do_request(relative_url, params=None):
+def do_request_without_processing(relative_url, params=None):
     url = '%s%s' % (GIPOD_API_URL, relative_url)
     if params:
         query_params = urllib.urlencode(params)
@@ -42,7 +42,11 @@ def do_request(relative_url, params=None):
 
     logging.info('do_request: %s', url)
 
-    result = urlfetch.fetch(url, deadline=30, follow_redirects=False)
+    return urlfetch.fetch(url, deadline=30, follow_redirects=False)
+
+
+def do_request(relative_url, params=None):
+    result = do_request_without_processing(relative_url, params)
     if result.status_code != 200:
         raise Exception('Failed to get gipod data')
 

@@ -48,14 +48,19 @@ class BaseModel(NdbModel):
     TYPE_WORK_ASSIGNMENT = u'w'
     TYPE_MANIFESTATION = u'm'
 
+    visible = ndb.BooleanProperty()
     cleanup_date = ndb.DateTimeProperty()
     search_keys = ndb.StringProperty(indexed=False, repeated=True)
 
-    data = ndb.JsonProperty(compressed=True)
+    data = ndb.JsonProperty(indexed=False)
     
     @property
     def uid(self):
         return self.key.id()
+
+    @property
+    def gipod_id(self):
+        return self.uid.split('-')[1]
 
     @classmethod
     def create_key(cls, type_, gipod_id):

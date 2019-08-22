@@ -2,6 +2,7 @@ import base64
 from datetime import datetime
 import json
 import logging
+import time
 
 from google.appengine.api import urlfetch
 from google.appengine.ext import ndb
@@ -126,10 +127,14 @@ def search_new(lat, lon, distance, start, end, cursor=None, limit=10):
 
 def search_current(lat, lon, distance, start, end, cursor=None, limit=10):
     from plugins.gipod.bizz import convert_to_item_tos
+    start_time = time.time()
     new_cursor, result_data = _search(lat, lon, distance, start, end, cursor, limit, is_new=False)
+    took_time = time.time() - start_time
+    logging.info('debugging.search_current _search {0:.3f}s'.format(took_time))
     keys = set()
     item_dates = {}
 
+    start_time = time.time()
     for hit in result_data['hits']['hits']:
         uid = hit['_id']
         parts = uid.split('-')
@@ -156,10 +161,20 @@ def search_current(lat, lon, distance, start, end, cursor=None, limit=10):
 
         item_dates[item_id]['periods'].append(period)
 
+    took_time = time.time() - start_time
+    logging.info('debugging.search_current hits {0:.3f}s'.format(took_time))
+
     items = []
     if keys:
+        start_time = time.time()
         models = ndb.get_multi(keys)
+        took_time = time.time() - start_time
+        logging.info('debugging.search_current ndb.get_multi {0:.3f}s'.format(took_time))
+
+        start_time = time.time()
         items.extend(convert_to_item_tos(models, extras=item_dates))
+        took_time = time.time() - start_time
+        logging.info('debugging.search_current convert_to_item_tos {0:.3f}s'.format(took_time))
     else:
         items = []
 

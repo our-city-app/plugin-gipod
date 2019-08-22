@@ -25,7 +25,8 @@ from mcfw.consts import DEBUG
 from mcfw.rpc import parse_complex_value
 from plugins.gipod.handlers import GipodItemsHandler, GipodNewItemsHandler, \
     GipodItemDetailsHandler
-from plugins.gipod.handlers.cron import GipodSyncHandler, GipodCleanupHandler
+from plugins.gipod.handlers.cron import GipodCleanupTimedOutHandler, GipodCleanupDeletedHandler, \
+    GipodSyncHandler
 from plugins.gipod.to import GipodPluginConfiguration
 
 
@@ -42,5 +43,6 @@ class GipodPlugin(Plugin):
             yield Handler(url='/plugins/gipod/items/new', handler=GipodNewItemsHandler)
             yield Handler(url='/plugins/gipod/items/detail', handler=GipodItemDetailsHandler)
         if auth == Handler.AUTH_ADMIN:
+            yield Handler(url='/admin/cron/gipod/cleanup/timed_out', handler=GipodCleanupTimedOutHandler)
+            yield Handler(url='/admin/cron/gipod/cleanup/deleted', handler=GipodCleanupDeletedHandler)
             yield Handler(url='/admin/cron/gipod/sync', handler=GipodSyncHandler)
-            yield Handler(url='/admin/cron/gipod/cleanup', handler=GipodCleanupHandler)

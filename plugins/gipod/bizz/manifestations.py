@@ -29,7 +29,7 @@ from framework.utils.cloud_tasks import create_task, run_tasks
 from mcfw.consts import DEBUG
 from mcfw.rpc import returns, arguments
 from plugins.gipod.bizz import do_request, LOCATION_INDEX, \
-    validate_data
+    validate_data, do_request_without_processing
 from plugins.gipod.bizz.elasticsearch import index_docs, delete_docs
 from plugins.gipod.models import ManifestationSettings, Manifestation
 from plugins.gipod.plugin_consts import SYNC_QUEUE
@@ -47,8 +47,12 @@ def sync():
     settings.put()
 
 
-def cleanup():
-    run_job(cleanup_query, [], cleanup_worker, [])
+def cleanup_timed_out():
+    run_job(cleanup_timed_out_query, [], cleanup_timed_out_worker, [])
+
+
+def cleanup_deleted():
+    run_job(cleanup_deleted_query, [], cleanup_deleted_worker, [])
 
 
 def _sync_all(last_sync, offset=0):
@@ -92,7 +96,7 @@ def _update_one(gipod_id, skip_if_exists=False):
     m.data = do_request('/manifestation/%s' % gipod_id)
     validate_data(m)
     re_index_manifestation(m)
-
+    
 
 @returns([search.Document])
 @arguments(m_key=ndb.Key, index_types=[unicode])
@@ -113,14 +117,10 @@ def re_index_manifestation(manifestation, index_types=None):
     if 'elasticsearch' in index_types:
         delete_docs(manifestation.search_keys)
 
-    if 'next_start_date' in manifestation._properties:
-        del manifestation._properties['next_start_date']
-    if 'max_end_date' in manifestation._properties:
-        del manifestation._properties['max_end_date']
-
     geo_point = search.GeoPoint(manifestation.data['location']['coordinate']['coordinates'][1],
                                 manifestation.data['location']['coordinate']['coordinates'][0])
 
+    manifestation.visible = False
     manifestation.cleanup_date = None
     manifestation.search_keys = []
     m_docs = []
@@ -132,11 +132,12 @@ def re_index_manifestation(manifestation, index_types=None):
         if end_date <= now_:
             continue
 
+        manifestation.visible = True
+        if not manifestation.cleanup_date or manifestation.cleanup_date > end_date:
+            manifestation.cleanup_date = end_date
         uid = u'%s-%s' % (manifestation.uid, i)
         manifestation.search_keys.append(uid)
 
-        if not manifestation.cleanup_date or manifestation.cleanup_date > end_date:
-            manifestation.cleanup_date = end_date
 
         start_date = datetime.strptime(p['startDateTime'], "%Y-%m-%dT%H:%M:%S")
         fields = [
@@ -183,12 +184,41 @@ def re_index_query():
     return Manifestation.query()
 
 
-def cleanup_worker(m_key):
+def cleanup_timed_out_worker(m_key):
     re_index(m_key)
 
 
-def cleanup_query():
-    # todo check if this included cleanup_date == None
+def cleanup_timed_out_query():
     qry = Manifestation.query()
+    qry = qry.filter(Manifestation.cleanup_date != None)
     qry = qry.filter(Manifestation.cleanup_date < datetime.utcnow())
+    return qry
+
+
+def cleanup_deleted_worker(m_key):
+    uid = m_key.id()
+    gipod_id = uid.split('-')[1]
+    result = do_request_without_processing('/manifestation/%s' % gipod_id)
+    if result.status_code == 200:
+        return
+    if result.status_code != 404:
+        logging.warn('cleanup_deleted_worker failed for %s with status code %s', uid, result.status_code)
+        return
+    logging.debug('cleanup_deleted_worker deleted %s', uid)
+
+    m = m_key.get()
+
+    the_index = search.Index(name=LOCATION_INDEX)
+    the_index.delete(m.search_keys)
+    delete_docs(m.search_keys)
+
+    m.cleanup_date = None
+    m.search_keys = []
+    m.visible = False
+    m.put()
+
+
+def cleanup_deleted_query():
+    qry = Manifestation.query()
+    qry = qry.filter(Manifestation.visible == True)
     return qry

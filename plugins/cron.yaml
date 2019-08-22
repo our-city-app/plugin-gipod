@@ -1,8 +1,12 @@
 cron:
+- description: Cleanup timed out gipod data
+  url: /admin/cron/gipod/cleanup/timed_out
+  schedule: every day 00:00
+
+- description: Cleanup deleted gipod data
+  url: /admin/cron/gipod/cleanup/deleted
+  schedule: every day 01:00
+
 - description: Sync gipod data
   url: /admin/cron/gipod/sync
   schedule: every day 04:00
-  
-- description: Cleanup old gipod data
-  url: /admin/cron/gipod/cleanup
-  schedule: every day 00:00

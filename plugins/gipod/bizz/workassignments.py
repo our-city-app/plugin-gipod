@@ -29,7 +29,7 @@ from framework.utils.cloud_tasks import create_task, run_tasks
 from mcfw.consts import DEBUG
 from mcfw.rpc import returns, arguments
 from plugins.gipod.bizz import do_request, LOCATION_INDEX, \
-    validate_data
+    validate_data, do_request_without_processing
 from plugins.gipod.bizz.elasticsearch import index_doc, delete_docs
 from plugins.gipod.models import WorkAssignmentSettings, WorkAssignment
 from plugins.gipod.plugin_consts import SYNC_QUEUE
@@ -47,8 +47,12 @@ def sync():
     settings.put()
 
 
-def cleanup():
-    run_job(cleanup_query, [], cleanup_worker, [])
+def cleanup_timed_out():
+    run_job(cleanup_timed_out_query, [], cleanup_timed_out_worker, [])
+
+
+def cleanup_deleted():
+    run_job(cleanup_deleted_query, [], cleanup_deleted_worker, [])
 
 
 def _sync_all(last_sync, offset=0):
@@ -113,11 +117,7 @@ def re_index_workassignment(workassignment, index_types=None):
     if 'elasticsearch' in index_types:
         delete_docs(workassignment.search_keys)
 
-    if 'start_date' in workassignment._properties:
-        del workassignment._properties['start_date']
-    if 'end_date' in workassignment._properties:
-        del workassignment._properties['end_date']
-
+    workassignment.visible = False
     workassignment.cleanup_date = None
     workassignment.search_keys = []
 
@@ -129,6 +129,7 @@ def re_index_workassignment(workassignment, index_types=None):
     
     uid = workassignment.uid
 
+    workassignment.visible = True
     workassignment.cleanup_date = end_date
     workassignment.search_keys.append(uid)
 
@@ -180,11 +181,41 @@ def re_index_query():
     return WorkAssignment.query()
 
 
-def cleanup_worker(m_key):
+def cleanup_timed_out_worker(m_key):
     re_index(m_key)
 
 
-def cleanup_query():
+def cleanup_timed_out_query():
     qry = WorkAssignment.query()
+    qry = qry.filter(WorkAssignment.cleanup_date != None)
     qry = qry.filter(WorkAssignment.cleanup_date < datetime.utcnow())
+    return qry
+
+
+def cleanup_deleted_worker(m_key):
+    uid = m_key.id()
+    gipod_id = uid.split('-')[1]
+    result = do_request_without_processing('/workassignment/%s' % gipod_id)
+    if result.status_code == 200:
+        return
+    if result.status_code != 404:
+        logging.warn('cleanup_deleted_worker failed for %s with status code %s', uid, result.status_code)
+        return
+    logging.debug('cleanup_deleted_worker deleted %s', uid)
+
+    m = m_key.get()
+
+    the_index = search.Index(name=LOCATION_INDEX)
+    the_index.delete(m.search_keys)
+    delete_docs(m.search_keys)
+
+    m.cleanup_date = None
+    m.search_keys = []
+    m.visible = False
+    m.put()
+
+
+def cleanup_deleted_query():
+    qry = WorkAssignment.query()
+    qry = qry.filter(WorkAssignment.visible == True)
     return qry

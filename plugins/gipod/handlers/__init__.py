@@ -20,6 +20,7 @@
 from datetime import datetime
 import json
 import logging
+import time
 import urllib
 
 from google.appengine.ext import ndb
@@ -239,8 +240,15 @@ def return_items_result(self, items, new_cursor, distance):
 
     logging.debug('got %s search results', len(items))
     result_to = GetMapItemsResponseTO(cursor=new_cursor, items=items, distance=distance)
+    start_time = time.time()
     result = serialize_complex_value(result_to, GetMapItemsResponseTO, False)
+    took_time = time.time() - start_time
+    logging.info('debugging.return_items_result serialize_complex_value {0:.3f}s'.format(took_time))
+
+    start_time = time.time()
     self.response.out.write(json.dumps(result))
+    took_time = time.time() - start_time
+    logging.info('debugging.return_items_result self.response.out.write {0:.3f}s'.format(took_time))
 
 
 def _get_items(self, is_new=False):
