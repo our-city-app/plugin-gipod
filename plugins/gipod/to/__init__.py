@@ -19,7 +19,7 @@
 
 from framework.to import TO
 from mcfw.properties import unicode_property, float_property, typed_property, \
-    long_property
+    long_property, object_factory
 
 
 class GipodPluginConfiguration(TO):
@@ -32,19 +32,57 @@ class GeoPointTO(TO):
     lon = float_property('2')
 
 
-class MapGeometryCoordsListTO(TO):
-    coords = typed_property('1', GeoPointTO, True)
+class MapGeometryObjectType(object):
+    LINE_STRING = 'LineString'
+    MULTI_LINE_STRING = 'MultiLineString'
+    POLYGON = 'Polygon'
+    MULTI_POLYGON = 'MultiPolygon'
 
 
-class MapGeometryTO(TO):
-    type = unicode_property('1')
-    color = unicode_property('2')
-    coords = typed_property('3', MapGeometryCoordsListTO, True)
+class CoordsListTO(TO):
+    coords = typed_property('coords', GeoPointTO, True)
 
 
-class MapItemLocationTO(TO):
-    coords = typed_property('1', GeoPointTO, False)
-    geometry = typed_property('2', MapGeometryTO, True)
+class PolygonTO(TO):
+    rings = typed_property('rings', CoordsListTO, True)
+
+
+class LineStringTypeTO(TO):
+    type = unicode_property('type', default=MapGeometryObjectType.LINE_STRING)
+    color = unicode_property('color')
+    line = typed_property('line', CoordsListTO, False)
+
+
+class MultiLineStringTypeTO(TO):
+    type = unicode_property('type', default=MapGeometryObjectType.MULTI_LINE_STRING)
+    color = unicode_property('color')
+    lines = typed_property('lines', CoordsListTO, True)
+
+
+class PolygonTypeTO(PolygonTO):
+    type = unicode_property('type', default=MapGeometryObjectType.POLYGON)
+    color = unicode_property('color')
+
+
+class MultiPolygonTypeTO(TO):
+    type = unicode_property('type', default=MapGeometryObjectType.MULTI_POLYGON)
+    color = unicode_property('color')
+    polygons = typed_property('polygons', PolygonTO, True)
+
+
+MAP_GEOMETRY_OBJECT_MAPPING = {
+    MapGeometryObjectType.LINE_STRING: LineStringTypeTO,
+    MapGeometryObjectType.MULTI_LINE_STRING: MultiLineStringTypeTO,
+    MapGeometryObjectType.POLYGON: PolygonTypeTO,
+    MapGeometryObjectType.MULTI_POLYGON: MultiPolygonTypeTO,
+}
+
+
+class MapGeometryObjectTO(object_factory):
+    type = unicode_property('type')
+
+    def __init__(self):
+        super(MapGeometryObjectTO, self).__init__('type', MAP_GEOMETRY_OBJECT_MAPPING)
 
 
 class MapIconTO(TO):
@@ -55,7 +93,7 @@ class MapIconTO(TO):
 class MapItemDetailSectionTO(TO):
     title = unicode_property('1')
     description = unicode_property('2')
-    geometry = typed_property('3', MapGeometryTO, False)
+    geometry = typed_property('3', MapGeometryObjectTO(), False)
 
 
 class MapItemTO(TO):
@@ -68,7 +106,7 @@ class MapItemTO(TO):
 
 class MapItemDetailsTO(TO):
     id = unicode_property('1')
-    geometry = typed_property('2', MapGeometryTO, True)
+    geometry = typed_property('2', MapGeometryObjectTO(), True)
     sections = typed_property('3', MapItemDetailSectionTO, True)
 
 

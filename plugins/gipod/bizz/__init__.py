@@ -27,7 +27,9 @@ from google.appengine.api import urlfetch, search
 
 from plugins.gipod.plugin_consts import GIPOD_API_URL, SYNC_QUEUE
 from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, \
-    MapGeometryCoordsListTO, MapGeometryTO, MapItemDetailSectionTO
+    MapItemDetailSectionTO, \
+    PolygonTypeTO, CoordsListTO, MultiPolygonTypeTO, LineStringTypeTO, \
+    MultiLineStringTypeTO
 from plugins.gipod.utils import drop_index
 
 LOCATION_INDEX = 'LOCATION_INDEX'
@@ -246,41 +248,44 @@ def convert_to_item_details_tos(models):
     return items
 
 
-def get_geometry_to(data):
+def get_geometry_to(data, color):
     if data['type'] == 'Polygon':
-        coords_list = MapGeometryCoordsListTO(coords=[])
+        polygon = PolygonTypeTO(color=color, rings=[])
         for c1 in data['coordinates']:
+            ring = CoordsListTO(coords=[])
             for c in c1:
-                coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+                ring.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+            if ring.coords:
+                polygon.rings.append(ring)
 
-        return MapGeometryTO(type=u'Polygon',
-                             color=u'#FF0000',
-                             coords=[coords_list])
+        return polygon
     elif data['type'] == 'MultiPolygon':
-        multi_coords = []
+        multi_polygon = MultiPolygonTypeTO(color=color, polygons=[])
         for l1 in data['coordinates']:
-            coords_list = MapGeometryCoordsListTO(coords=[])
+            polygon = PolygonTypeTO(color=color, rings=[])
             for l2 in l1:
+                ring = CoordsListTO(coords=[])
                 for c in l2:
-                    coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
-            if coords_list.coords:
-                multi_coords.append(coords_list)
+                    ring.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+                if ring.coords:
+                    polygon.rings.append(ring)
+            if polygon.rings:
+                multi_polygon.polygons.append(polygon)
 
-        return MapGeometryTO(type=u'MultiPolygon',
-                             color=u'#FF0000',
-                             coords=multi_coords)
+        return multi_polygon
     else:
         return None
 
-def get_geometry_tos(uid, data):
+
+def get_geometry_tos(uid, data, color):
     if data['type'] == 'Polygon':
-        return [get_geometry_to(data)]
+        return [get_geometry_to(data, color)]
     elif data['type'] == 'MultiPolygon':
-        return [get_geometry_to(data)]
+        return [get_geometry_to(data, color)]
     elif data['type'] == 'GeometryCollection':
         l = []
         for g in data['geometries']:
-            to = get_geometry_to(g)
+            to = get_geometry_to(g, color)
             if to:
                 l.append(to)
             else:
@@ -292,8 +297,14 @@ def get_geometry_tos(uid, data):
 
 
 def convert_to_item_details_to(m):
+    hindrance = m.data.get('hindrance') or {}
+    if m.TYPE == 'w':
+        _, icon_color = get_workassignment_icon(hindrance.get('important', False))
+    elif m.TYPE == 'm':
+        _, icon_color = get_manifestation_icon(m.data['eventType'])
+
     to = MapItemDetailsTO(id=m.uid,
-                          geometry=get_geometry_tos(m.uid, m.data['location']['geometry']),
+                          geometry=get_geometry_tos(m.uid, m.data['location']['geometry'], icon_color),
                           sections=[])
 
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -353,7 +364,6 @@ def convert_to_item_details_to(m):
                                                   description=u'\n'.join(periods_message),
                                                   geometry=None))
 
-    hindrance = m.data.get('hindrance') or {}
     effects = hindrance.get('effects') or []
     if effects:
         to.sections.append(MapItemDetailSectionTO(title=u'Hinder',
@@ -373,25 +383,21 @@ def convert_to_item_details_to(m):
             
             geometry = None
             if  diversion['geometry']['type'] == 'LineString':
-                coords_list = MapGeometryCoordsListTO(coords=[])
-                for c in  diversion['geometry']['coordinates']:
-                    coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
-                if coords_list.coords:
-                    geometry = MapGeometryTO(type=u'LineString',
-                                             color=u'#00FF00',
-                                             coords=[coords_list])
+                line_string = LineStringTypeTO(color='#2dc219', line=CoordsListTO(coords=[]))
+                for c in diversion['geometry']['coordinates']:
+                    line_string.line.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+                if line_string.line.coords:
+                    geometry = line_string
             elif  diversion['geometry']['type'] == 'MultiLineString':
-                multi_coords = []
+                multi_line_string = MultiLineStringTypeTO(color='#2dc219', lines=[])
                 for l1 in diversion['geometry']['coordinates']:
-                    coords_list = MapGeometryCoordsListTO(coords=[])
+                    line = CoordsListTO(coords=[])
                     for c in l1:
-                        coords_list.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
-                    if coords_list.coords:
-                        multi_coords.append(coords_list)
-                if multi_coords:
-                    geometry = MapGeometryTO(type=u'MultiLineString',
-                                             color=u'#00FF00',
-                                             coords=multi_coords)
+                        line.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+                    if line.coords:
+                        multi_line_string.lines.append(line)
+                if multi_line_string.lines:
+                    geometry = multi_line_string
             else:
                 logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], m.uid)
 
