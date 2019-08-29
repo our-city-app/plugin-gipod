@@ -170,7 +170,7 @@ def _get_items(self, is_new=False):
             if is_new:
                 return_ids_result(self, [], None)
             else:
-                return_items_result(self, [], None)
+                return_items_result(self, [], None, distance)
             return
 
         results, new_cursor = r

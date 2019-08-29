@@ -27,9 +27,9 @@ from google.appengine.api import urlfetch, search
 
 from plugins.gipod.plugin_consts import GIPOD_API_URL, SYNC_QUEUE
 from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, \
-    MapItemDetailSectionTO, \
-    PolygonTypeTO, CoordsListTO, MultiPolygonTypeTO, LineStringTypeTO, \
-    MultiLineStringTypeTO
+    MapItemDetailSectionTO, CoordsListTO, PolygonGeometryTO, \
+    MultiPolygonGeometryTO, PolygonTO, LineStringGeometryTO, \
+    MultiLineStringGeometryTO
 from plugins.gipod.utils import drop_index
 
 LOCATION_INDEX = 'LOCATION_INDEX'
@@ -250,7 +250,7 @@ def convert_to_item_details_tos(models):
 
 def get_geometry_to(data, color):
     if data['type'] == 'Polygon':
-        polygon = PolygonTypeTO(color=color, rings=[])
+        polygon = PolygonGeometryTO(color=color, rings=[])
         for c1 in data['coordinates']:
             ring = CoordsListTO(coords=[])
             for c in c1:
@@ -260,9 +260,9 @@ def get_geometry_to(data, color):
 
         return polygon
     elif data['type'] == 'MultiPolygon':
-        multi_polygon = MultiPolygonTypeTO(color=color, polygons=[])
+        multi_polygon = MultiPolygonGeometryTO(color=color, polygons=[])
         for l1 in data['coordinates']:
-            polygon = PolygonTypeTO(color=color, rings=[])
+            polygon = PolygonTO(rings=[])
             for l2 in l1:
                 ring = CoordsListTO(coords=[])
                 for c in l2:
@@ -383,13 +383,13 @@ def convert_to_item_details_to(m):
             
             geometry = None
             if  diversion['geometry']['type'] == 'LineString':
-                line_string = LineStringTypeTO(color='#2dc219', line=CoordsListTO(coords=[]))
+                line_string = LineStringGeometryTO(color='#2dc219', line=CoordsListTO(coords=[]))
                 for c in diversion['geometry']['coordinates']:
                     line_string.line.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
                 if line_string.line.coords:
                     geometry = line_string
             elif  diversion['geometry']['type'] == 'MultiLineString':
-                multi_line_string = MultiLineStringTypeTO(color='#2dc219', lines=[])
+                multi_line_string = MultiLineStringGeometryTO(color='#2dc219', lines=[])
                 for l1 in diversion['geometry']['coordinates']:
                     line = CoordsListTO(coords=[])
                     for c in l1:

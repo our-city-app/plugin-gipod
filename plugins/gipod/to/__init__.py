@@ -32,7 +32,7 @@ class GeoPointTO(TO):
     lon = float_property('2')
 
 
-class MapGeometryObjectType(object):
+class MapGeometryType(object):
     LINE_STRING = 'LineString'
     MULTI_LINE_STRING = 'MultiLineString'
     POLYGON = 'Polygon'
@@ -47,42 +47,43 @@ class PolygonTO(TO):
     rings = typed_property('rings', CoordsListTO, True)
 
 
-class LineStringTypeTO(TO):
-    type = unicode_property('type', default=MapGeometryObjectType.LINE_STRING)
+class LineStringGeometryTO(TO):
+    type = unicode_property('type', default=MapGeometryType.LINE_STRING)
     color = unicode_property('color')
     line = typed_property('line', CoordsListTO, False)
 
 
-class MultiLineStringTypeTO(TO):
-    type = unicode_property('type', default=MapGeometryObjectType.MULTI_LINE_STRING)
+class MultiLineStringGeometryTO(TO):
+    type = unicode_property('type', default=MapGeometryType.MULTI_LINE_STRING)
     color = unicode_property('color')
     lines = typed_property('lines', CoordsListTO, True)
 
 
-class PolygonTypeTO(PolygonTO):
-    type = unicode_property('type', default=MapGeometryObjectType.POLYGON)
+class PolygonGeometryTO(PolygonTO):
+    type = unicode_property('type', default=MapGeometryType.POLYGON)
     color = unicode_property('color')
 
 
-class MultiPolygonTypeTO(TO):
-    type = unicode_property('type', default=MapGeometryObjectType.MULTI_POLYGON)
+class MultiPolygonGeometryTO(TO):
+    type = unicode_property('type', default=MapGeometryType.MULTI_POLYGON)
     color = unicode_property('color')
     polygons = typed_property('polygons', PolygonTO, True)
 
 
-MAP_GEOMETRY_OBJECT_MAPPING = {
-    MapGeometryObjectType.LINE_STRING: LineStringTypeTO,
-    MapGeometryObjectType.MULTI_LINE_STRING: MultiLineStringTypeTO,
-    MapGeometryObjectType.POLYGON: PolygonTypeTO,
-    MapGeometryObjectType.MULTI_POLYGON: MultiPolygonTypeTO,
+MAP_GEOMETRY_MAPPING = {
+    MapGeometryType.LINE_STRING: LineStringGeometryTO,
+    MapGeometryType.MULTI_LINE_STRING: MultiLineStringGeometryTO,
+    MapGeometryType.POLYGON: PolygonGeometryTO,
+    MapGeometryType.MULTI_POLYGON: MultiPolygonGeometryTO,
 }
 
 
-class MapGeometryObjectTO(object_factory):
+class MapGeometryTO(object_factory):
     type = unicode_property('type')
+    color = unicode_property('color')
 
     def __init__(self):
-        super(MapGeometryObjectTO, self).__init__('type', MAP_GEOMETRY_OBJECT_MAPPING)
+        super(MapGeometryTO, self).__init__('type', MAP_GEOMETRY_MAPPING)
 
 
 class MapIconTO(TO):
@@ -93,7 +94,7 @@ class MapIconTO(TO):
 class MapItemDetailSectionTO(TO):
     title = unicode_property('1')
     description = unicode_property('2')
-    geometry = typed_property('3', MapGeometryObjectTO(), False)
+    geometry = typed_property('3', MapGeometryTO(), False)
 
 
 class MapItemTO(TO):
@@ -106,7 +107,7 @@ class MapItemTO(TO):
 
 class MapItemDetailsTO(TO):
     id = unicode_property('1')
-    geometry = typed_property('2', MapGeometryObjectTO(), True)
+    geometry = typed_property('2', MapGeometryTO(), True)
     sections = typed_property('3', MapItemDetailSectionTO, True)
 
 
