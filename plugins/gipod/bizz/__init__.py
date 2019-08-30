@@ -17,19 +17,16 @@
 #
 # @@license_version:1.5@@
 
-from datetime import datetime
 import json
 import logging
 import time
 import urllib
-
+from datetime import datetime
 from google.appengine.api import urlfetch, search
 
-from plugins.gipod.plugin_consts import GIPOD_API_URL, SYNC_QUEUE
-from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, \
-    MapItemDetailSectionTO, CoordsListTO, PolygonGeometryTO, \
-    MultiPolygonGeometryTO, PolygonTO, LineStringGeometryTO, \
-    MultiLineStringGeometryTO
+from plugins.gipod.plugin_consts import GIPOD_API_URL
+from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, MapItemDetailSectionTO, CoordsListTO, \
+    PolygonGeometryTO, MultiPolygonGeometryTO, PolygonTO, LineStringGeometryTO, MultiLineStringGeometryTO
 from plugins.gipod.utils import drop_index
 
 LOCATION_INDEX = 'LOCATION_INDEX'
@@ -254,44 +251,32 @@ def convert_to_item_details_tos(models):
 
 def get_geometry_to(data, color):
     if data['type'] == 'LineString':
-        line_string = LineStringGeometryTO(color=color, line=CoordsListTO(coords=[]))
-        for c in data['coordinates']:
-            line_string.line.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
-
-        return line_string
+        return LineStringGeometryTO(
+            color=color,
+            line=CoordsListTO(
+                coords=[GeoPointTO(lat=c[1], lon=c[0]) for c in data['coordinates']]
+            )
+        )
     elif data['type'] == 'MultiLineString':
-        multi_line_string = MultiLineStringGeometryTO(color=color, lines=[])
-        for l1 in data['coordinates']:
-            line = CoordsListTO(coords=[])
-            for c in l1:
-                line.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
-            if line.coords:
-                multi_line_string.lines.append(line)
-
-        return multi_line_string
+        return MultiLineStringGeometryTO(
+            color=color,
+            lines=[CoordsListTO(coords=[GeoPointTO(lat=c[1], lon=c[0]) for c in list_of_coords])
+                   for list_of_coords in data['coordinates'] if list_of_coords]
+        )
     elif data['type'] == 'Polygon':
-        polygon = PolygonGeometryTO(color=color, rings=[])
-        for c1 in data['coordinates']:
-            ring = CoordsListTO(coords=[])
-            for c in c1:
-                ring.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
-            if ring.coords:
-                polygon.rings.append(ring)
-
-        return polygon
+        return PolygonGeometryTO(
+            color=color,
+            rings=[CoordsListTO(coords=[GeoPointTO(lat=c[1], lon=c[0]) for c in list_of_coords])
+                   for list_of_coords in data['coordinates'] if list_of_coords]
+        )
     elif data['type'] == 'MultiPolygon':
         multi_polygon = MultiPolygonGeometryTO(color=color, polygons=[])
-        for l1 in data['coordinates']:
-            polygon = PolygonTO(rings=[])
-            for l2 in l1:
-                ring = CoordsListTO(coords=[])
-                for c in l2:
-                    ring.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
-                if ring.coords:
-                    polygon.rings.append(ring)
-            if polygon.rings:
-                multi_polygon.polygons.append(polygon)
-
+        for nested_coordinates in data['coordinates']:
+            if nested_coordinates:
+                multi_polygon.polygons.append(PolygonTO(
+                    rings=[CoordsListTO(coords=[GeoPointTO(lat=c[1], lon=c[0]) for c in list_of_coords])
+                           for list_of_coords in nested_coordinates if list_of_coords]
+                ))
         return multi_polygon
     else:
         return None
