@@ -135,7 +135,11 @@ def validate_data(m):
     diversions = m.data.get('diversions') or []
     if diversions:
         for diversion in diversions:
-            if  diversion['geometry']['type'] not in ('LineString', 'MultiLineString',):
+            if diversion['geometry']['type'] in ('GeometryCollection',):
+                for g in diversion['geometry']['geometries']:
+                    if g['type'] not in ('LineString', 'MultiLineString',):
+                        logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], m.uid)
+            elif  diversion['geometry']['type'] not in ('LineString', 'MultiLineString',):
                 logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], m.uid)
 
 
@@ -249,7 +253,23 @@ def convert_to_item_details_tos(models):
 
 
 def get_geometry_to(data, color):
-    if data['type'] == 'Polygon':
+    if data['type'] == 'LineString':
+        line_string = LineStringGeometryTO(color=color, line=CoordsListTO(coords=[]))
+        for c in data['coordinates']:
+            line_string.line.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+
+        return line_string
+    elif data['type'] == 'MultiLineString':
+        multi_line_string = MultiLineStringGeometryTO(color=color, lines=[])
+        for l1 in data['coordinates']:
+            line = CoordsListTO(coords=[])
+            for c in l1:
+                line.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
+            if line.coords:
+                multi_line_string.lines.append(line)
+
+        return multi_line_string
+    elif data['type'] == 'Polygon':
         polygon = PolygonGeometryTO(color=color, rings=[])
         for c1 in data['coordinates']:
             ring = CoordsListTO(coords=[])
@@ -278,7 +298,11 @@ def get_geometry_to(data, color):
 
 
 def get_geometry_tos(uid, data, color):
-    if data['type'] == 'Polygon':
+    if data['type'] == 'LineString':
+        return [get_geometry_to(data, color)]
+    elif data['type'] == 'MultiLineString':
+        return [get_geometry_to(data, color)]
+    elif data['type'] == 'Polygon':
         return [get_geometry_to(data, color)]
     elif data['type'] == 'MultiPolygon':
         return [get_geometry_to(data, color)]
@@ -292,8 +316,8 @@ def get_geometry_tos(uid, data, color):
                 logging.error('Unknown geometry collection  type: "%s" for %s', g['type'], uid)
         return l
     
-    else:
-        logging.error('Unknown geometry type: "%s" for %s', data['type'], uid)
+    logging.error('Unknown geometry type: "%s" for %s', data['type'], uid)
+    return []
 
 
 def convert_to_item_details_to(m):
@@ -362,13 +386,13 @@ def convert_to_item_details_to(m):
 
         to.sections.append(MapItemDetailSectionTO(title=None,
                                                   description=u'\n'.join(periods_message),
-                                                  geometry=None))
+                                                  geometry=[]))
 
     effects = hindrance.get('effects') or []
     if effects:
         to.sections.append(MapItemDetailSectionTO(title=u'Hinder',
                                                   description=u'\n'.join(effects),
-                                                  geometry=None))
+                                                  geometry=[]))
                                    
     diversions = m.data.get('diversions') or []
     if diversions:
@@ -380,30 +404,9 @@ def convert_to_item_details_to(m):
             diversion_streets = diversion.get('streets') or []
             if diversion_streets:
                 diversions_message.append('U kan ook volgende straten volgen:\n%s' % ('\n'.join(diversion_streets)))
-            
-            geometry = None
-            if  diversion['geometry']['type'] == 'LineString':
-                line_string = LineStringGeometryTO(color='#2dc219', line=CoordsListTO(coords=[]))
-                for c in diversion['geometry']['coordinates']:
-                    line_string.line.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
-                if line_string.line.coords:
-                    geometry = line_string
-            elif  diversion['geometry']['type'] == 'MultiLineString':
-                multi_line_string = MultiLineStringGeometryTO(color='#2dc219', lines=[])
-                for l1 in diversion['geometry']['coordinates']:
-                    line = CoordsListTO(coords=[])
-                    for c in l1:
-                        line.coords.append(GeoPointTO(lat=c[1], lon=c[0]))
-                    if line.coords:
-                        multi_line_string.lines.append(line)
-                if multi_line_string.lines:
-                    geometry = multi_line_string
-            else:
-                logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], m.uid)
-
 
             to.sections.append(MapItemDetailSectionTO(title=u'Omleiding %s' % (i + 1),
                                                       description=u'\n'.join(diversions_message),
-                                                      geometry=geometry))
+                                                      geometry=get_geometry_tos(m.uid, diversion['geometry'], '#2dc219')))
 
     return to

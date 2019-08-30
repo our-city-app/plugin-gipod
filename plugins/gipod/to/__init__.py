@@ -94,7 +94,7 @@ class MapIconTO(TO):
 class MapItemDetailSectionTO(TO):
     title = unicode_property('1')
     description = unicode_property('2')
-    geometry = typed_property('3', MapGeometryTO(), False)
+    geometry = typed_property('3', MapGeometryTO(), True)
 
 
 class MapItemTO(TO):
