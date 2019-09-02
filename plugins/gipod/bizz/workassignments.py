@@ -94,8 +94,7 @@ def _update_one(gipod_id, skip_if_exists=False):
         m = WorkAssignment(key=m_key)
 
     data = do_request('/workassignment/%s' % gipod_id)
-    m.data = data
-    validate_and_clean_data(m)
+    m.data = validate_and_clean_data(m.TYPE, m.uid, data)
     re_index_workassignment(m)
 
 

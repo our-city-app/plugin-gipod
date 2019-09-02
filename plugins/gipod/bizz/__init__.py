@@ -24,6 +24,7 @@ import urllib
 from datetime import datetime
 from google.appengine.api import urlfetch, search
 
+from plugins.gipod.models import Manifestation
 from plugins.gipod.plugin_consts import GIPOD_API_URL
 from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, MapItemDetailSectionTO, CoordsListTO, \
     PolygonGeometryTO, MultiPolygonGeometryTO, PolygonTO, LineStringGeometryTO, MultiLineStringGeometryTO
@@ -119,17 +120,20 @@ def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, 
 
 
 def validate_and_clean_data(type_, uid, data):
-    if type_ == 'm':
+    if type_ == Manifestation.TYPE:
         get_manifestation_icon(data['eventType'])
     location = data['location']
     location['coordinate']['coordinates'] = _clean_coordinates(location['coordinate']['coordinates'])
-    location['geometry']['coordinates'] = _clean_coordinates(location['geometry']['coordinates'])
     if location['geometry']['type'] in ('GeometryCollection',):
+        for geometry in location['geometry']['geometries']:
+            _clean_geometry(geometry)
         for g in location['geometry']['geometries']:
             if g['type'] not in ('Polygon', 'MultiPolygon',):
                 logging.error('Unknown geometry collection type: "%s" for %s', g['type'], uid)
     elif location['geometry']['type'] not in ('Polygon', 'MultiPolygon',):
         logging.error('Unknown geometry type: "%s" for %s', location['geometry']['type'], uid)
+    else:
+        _clean_geometry(location['geometry'])
 
     data['location'] = location
     diversions = data.get('diversions') or []
@@ -140,9 +144,20 @@ def validate_and_clean_data(type_, uid, data):
                     if g['type'] not in ('LineString', 'MultiLineString',):
                         logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'],
                                       uid)
+                    _clean_geometry(g)
             elif diversion['geometry']['type'] not in ('LineString', 'MultiLineString',):
                 logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], uid)
+            else:
+                _clean_geometry(diversion['geometry'])
     return data
+
+
+def _clean_geometry(geometry):
+    if geometry['type'] == 'GeometryCollection':
+        for item in geometry['geometries']:
+            _clean_geometry(item)
+    elif geometry['type'] in ('Polygon', 'MultiPolygon', 'LineString', 'MultiLineString'):
+        _clean_coordinates(geometry['coordinates'])
 
 
 # Removes unnecessary decimals (some where up to 16 decimals long!) from the coordinates (https://xkcd.com/2170/)
@@ -151,7 +166,7 @@ def _clean_coordinates(coordinates_list):
         if isinstance(item, float):
             coordinates_list[i] = round(item, 6)  # 6 decimals -> 0.11m per unit
         else:
-            coordinates_list[i] = [_clean_coordinates(nested_item) for nested_item in item]
+            coordinates_list[i] = _clean_coordinates(item)
     return coordinates_list
 
 
