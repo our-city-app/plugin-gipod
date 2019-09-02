@@ -29,7 +29,7 @@ from framework.utils.cloud_tasks import create_task, run_tasks
 from mcfw.consts import DEBUG
 from mcfw.rpc import returns, arguments
 from plugins.gipod.bizz import do_request, LOCATION_INDEX, \
-    validate_data, do_request_without_processing
+    validate_and_clean_data, do_request_without_processing
 from plugins.gipod.bizz.elasticsearch import index_docs, delete_docs
 from plugins.gipod.models import ManifestationSettings, Manifestation
 from plugins.gipod.plugin_consts import SYNC_QUEUE
@@ -93,10 +93,11 @@ def _update_one(gipod_id, skip_if_exists=False):
     if not m:
         m = Manifestation(key=m_key)
 
-    m.data = do_request('/manifestation/%s' % gipod_id)
-    validate_data(m)
+    data = do_request('/manifestation/%s' % gipod_id)
+    m.data = validate_and_clean_data(m.TYPE, m.uid, data)
+
     re_index_manifestation(m)
-    
+
 
 @returns([search.Document])
 @arguments(m_key=ndb.Key, index_types=[unicode])

@@ -118,26 +118,41 @@ def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, 
     return None
 
 
-def validate_data(m):
-    if m.TYPE == 'm':
-        get_manifestation_icon(m.data['eventType'])
-
-    if m.data['location']['geometry']['type'] in ('GeometryCollection',):
-        for g in m.data['location']['geometry']['geometries']:
+def validate_and_clean_data(type_, uid, data):
+    if type_ == 'm':
+        get_manifestation_icon(data['eventType'])
+    location = data['location']
+    location['coordinate']['coordinates'] = _clean_coordinates(location['coordinate']['coordinates'])
+    location['geometry']['coordinates'] = _clean_coordinates(location['geometry']['coordinates'])
+    if location['geometry']['type'] in ('GeometryCollection',):
+        for g in location['geometry']['geometries']:
             if g['type'] not in ('Polygon', 'MultiPolygon',):
-                logging.error('Unknown geometry collection type: "%s" for %s', g['type'], m.uid)
-    elif m.data['location']['geometry']['type'] not in ('Polygon', 'MultiPolygon',):
-        logging.error('Unknown geometry type: "%s" for %s', m.data['location']['geometry']['type'], m.uid)
+                logging.error('Unknown geometry collection type: "%s" for %s', g['type'], uid)
+    elif location['geometry']['type'] not in ('Polygon', 'MultiPolygon',):
+        logging.error('Unknown geometry type: "%s" for %s', location['geometry']['type'], uid)
 
-    diversions = m.data.get('diversions') or []
+    data['location'] = location
+    diversions = data.get('diversions') or []
     if diversions:
         for diversion in diversions:
             if diversion['geometry']['type'] in ('GeometryCollection',):
                 for g in diversion['geometry']['geometries']:
                     if g['type'] not in ('LineString', 'MultiLineString',):
-                        logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], m.uid)
-            elif  diversion['geometry']['type'] not in ('LineString', 'MultiLineString',):
-                logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], m.uid)
+                        logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'],
+                                      uid)
+            elif diversion['geometry']['type'] not in ('LineString', 'MultiLineString',):
+                logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], uid)
+    return data
+
+
+# Removes unnecessary decimals (some where up to 16 decimals long!) from the coordinates (https://xkcd.com/2170/)
+def _clean_coordinates(coordinates_list):
+    for i, item in enumerate(coordinates_list):
+        if isinstance(item, float):
+            coordinates_list[i] = round(item, 6)  # 6 decimals -> 0.11m per unit
+        else:
+            coordinates_list[i] = [_clean_coordinates(nested_item) for nested_item in item]
+    return coordinates_list
 
 
 def get_workassignment_icon(important=False):
