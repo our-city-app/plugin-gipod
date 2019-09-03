@@ -17,11 +17,12 @@
 #
 # @@license_version:1.5@@
 
+from datetime import datetime
 import json
 import logging
 import time
 import urllib
-from datetime import datetime
+
 from google.appengine.api import urlfetch, search
 
 from plugins.gipod.models import Manifestation
@@ -122,51 +123,50 @@ def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, 
 def validate_and_clean_data(type_, uid, data):
     if type_ == Manifestation.TYPE:
         get_manifestation_icon(data['eventType'])
-    location = data['location']
-    location['coordinate']['coordinates'] = _clean_coordinates(location['coordinate']['coordinates'])
-    if location['geometry']['type'] in ('GeometryCollection',):
-        for geometry in location['geometry']['geometries']:
-            _clean_geometry(geometry)
-        for g in location['geometry']['geometries']:
+    data['location']['coordinate']['coordinates'] = _clean_coordinates(data['location']['coordinate']['coordinates'])
+    if data['location']['geometry']['type'] in ('GeometryCollection',):
+        for g in data['location']['geometry']['geometries']:
             if g['type'] not in ('Polygon', 'MultiPolygon',):
                 logging.error('Unknown geometry collection type: "%s" for %s', g['type'], uid)
-    elif location['geometry']['type'] not in ('Polygon', 'MultiPolygon',):
-        logging.error('Unknown geometry type: "%s" for %s', location['geometry']['type'], uid)
-    else:
-        _clean_geometry(location['geometry'])
-
-    data['location'] = location
-    diversions = data.get('diversions') or []
-    if diversions:
-        for diversion in diversions:
-            if diversion['geometry']['type'] in ('GeometryCollection',):
-                for g in diversion['geometry']['geometries']:
-                    if g['type'] not in ('LineString', 'MultiLineString',):
-                        logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'],
-                                      uid)
-                    _clean_geometry(g)
-            elif diversion['geometry']['type'] not in ('LineString', 'MultiLineString',):
-                logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], uid)
             else:
-                _clean_geometry(diversion['geometry'])
-    return data
+                _clean_geometry(g)
+    elif data['location']['geometry']['type'] not in ('Polygon', 'MultiPolygon',):
+        logging.error('Unknown geometry type: "%s" for %s', data['location']['geometry']['type'], uid)
+    else:
+        _clean_geometry(data['location']['geometry'])
+
+    diversions = data.get('diversions') or []
+    for diversion in diversions:
+        if diversion['geometry']['type'] in ('GeometryCollection',):
+            for g in diversion['geometry']['geometries']:
+                if g['type'] not in ('LineString', 'MultiLineString',):
+                    logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], uid)
+                else:
+                    _clean_geometry(g)
+        elif diversion['geometry']['type'] not in ('LineString', 'MultiLineString',):
+            logging.error('Unknown diversion geometry type: "%s" for %s', diversion['geometry']['type'], uid)
+        else:
+            _clean_geometry(diversion['geometry'])
 
 
 def _clean_geometry(geometry):
     if geometry['type'] == 'GeometryCollection':
         for item in geometry['geometries']:
             _clean_geometry(item)
-    elif geometry['type'] in ('Polygon', 'MultiPolygon', 'LineString', 'MultiLineString'):
+    elif geometry['type'] in ('LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'):
         _clean_coordinates(geometry['coordinates'])
 
 
 # Removes unnecessary decimals (some where up to 16 decimals long!) from the coordinates (https://xkcd.com/2170/)
 def _clean_coordinates(coordinates_list):
     for i, item in enumerate(coordinates_list):
-        if isinstance(item, float):
+        if isinstance(item, list):
+            coordinates_list[i] = _clean_coordinates(item)
+        elif isinstance(item, float):
             coordinates_list[i] = round(item, 6)  # 6 decimals -> 0.11m per unit
         else:
-            coordinates_list[i] = _clean_coordinates(item)
+            logging.warn('_clean_coordinates unknown prop type:%s', type(item))
+
     return coordinates_list
 
 
@@ -410,18 +410,17 @@ def convert_to_item_details_to(m):
                                                   geometry=[]))
                                    
     diversions = m.data.get('diversions') or []
-    if diversions:
-        for i, diversion in enumerate(diversions):
-            diversions_message = []
-            diversion_types = diversion.get('diversionTypes') or []
-            if diversion_types:
-                diversions_message.append('Deze omleiding is geldig voor:\n%s' % ('\n'.join(diversion_types)))
-            diversion_streets = diversion.get('streets') or []
-            if diversion_streets:
-                diversions_message.append('U kan ook volgende straten volgen:\n%s' % ('\n'.join(diversion_streets)))
+    for i, diversion in enumerate(diversions):
+        diversions_message = []
+        diversion_types = diversion.get('diversionTypes') or []
+        if diversion_types:
+            diversions_message.append('Deze omleiding is geldig voor:\n%s' % ('\n'.join(diversion_types)))
+        diversion_streets = diversion.get('streets') or []
+        if diversion_streets:
+            diversions_message.append('U kan ook volgende straten volgen:\n%s' % ('\n'.join(diversion_streets)))
 
-            to.sections.append(MapItemDetailSectionTO(title=u'Omleiding %s' % (i + 1),
-                                                      description=u'\n'.join(diversions_message),
-                                                      geometry=get_geometry_tos(m.uid, diversion['geometry'], '#2dc219')))
+        to.sections.append(MapItemDetailSectionTO(title=u'Omleiding %s' % (i + 1),
+                                                  description=u'\n'.join(diversions_message),
+                                                  geometry=get_geometry_tos(m.uid, diversion['geometry'], '#2dc219')))
 
     return to

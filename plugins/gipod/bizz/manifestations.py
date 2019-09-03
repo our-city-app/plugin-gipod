@@ -93,9 +93,8 @@ def _update_one(gipod_id, skip_if_exists=False):
     if not m:
         m = Manifestation(key=m_key)
 
-    data = do_request('/manifestation/%s' % gipod_id)
-    m.data = validate_and_clean_data(m.TYPE, m.uid, data)
-
+    m.data = do_request('/manifestation/%s' % gipod_id)
+    validate_and_clean_data(m.TYPE, m.uid, m.data)
     re_index_manifestation(m)
 
 
