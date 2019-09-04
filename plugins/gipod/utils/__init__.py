@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2018 Mobicage NV
-# NOTICE: THIS FILE HAS BEEN MODIFIED BY MOBICAGE NV IN ACCORDANCE WITH THE APACHE LICENSE VERSION 2.0
-# Copyright 2018 GIG Technology NV
+# Copyright 2019 Green Valley Belgium NV
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +14,6 @@
 # limitations under the License.
 #
 # @@license_version:1.5@@
-
 
 def drop_index(the_index):
     while True:
