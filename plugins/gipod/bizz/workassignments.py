@@ -189,6 +189,7 @@ def cleanup_timed_out_query():
     qry = WorkAssignment.query()
     qry = qry.filter(WorkAssignment.cleanup_date != None)
     qry = qry.filter(WorkAssignment.cleanup_date < datetime.utcnow())
+    qry = qry.order(WorkAssignment.cleanup_date, WorkAssignment.key)
     return qry
 
 

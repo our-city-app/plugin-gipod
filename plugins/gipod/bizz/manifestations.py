@@ -192,6 +192,7 @@ def cleanup_timed_out_query():
     qry = Manifestation.query()
     qry = qry.filter(Manifestation.cleanup_date != None)
     qry = qry.filter(Manifestation.cleanup_date < datetime.utcnow())
+    qry = qry.order(Manifestation.cleanup_date, Manifestation.key)
     return qry
 
 
