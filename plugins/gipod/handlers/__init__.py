@@ -29,67 +29,11 @@ import webapp2
 from framework.plugin_loader import get_config
 from framework.utils import get_epoch_from_datetime
 from mcfw.rpc import serialize_complex_value
-from plugins.gipod.bizz import find_items, get_workassignment_icon, \
-    get_manifestation_icon, convert_to_item_tos, convert_to_item_details_tos
+from plugins.gipod.bizz import get_workassignment_icon, get_manifestation_icon, convert_to_item_tos, convert_to_item_details_tos
 from plugins.gipod.bizz.elasticsearch import search_new, search_current
 from plugins.gipod.models import WorkAssignment, Manifestation, Consumer
 from plugins.gipod.plugin_consts import NAMESPACE
 from plugins.gipod.to import GetMapItemDetailsResponseTO, GetMapItemsResponseTO
-
-
-def _get_items_ids(self, results, new_cursor):
-    ids = set()
-    for result in results:
-        uid = result.fields[0].value
-        parts = uid.split('-')
-
-        if len(parts) == 2:
-            type_, gipod_id = parts
-        else:
-            type_, gipod_id, _ = parts
-
-        item_id = '%s-%s' % (type_, gipod_id)
-        ids.add(item_id)
-
-    return_ids_result(self, list(ids), new_cursor)
-
-
-def _get_items_full(self, results, new_cursor, distance):
-    keys = set()
-    item_dates = {}
-    for result in results:
-        uid = result.fields[0].value
-        parts = uid.split('-')
-
-        if len(parts) == 2:
-            type_, gipod_id = parts
-        else:
-            type_, gipod_id, _ = parts
-
-        item_id = '%s-%s' % (type_, gipod_id)
-        if type_ == 'w':
-            keys.add(WorkAssignment.create_key(WorkAssignment.TYPE, gipod_id))
-        elif type_ == 'm':
-            keys.add(Manifestation.create_key(Manifestation.TYPE, gipod_id))
-
-        if item_id not in item_dates:
-            item_dates[item_id] = {'periods': []}
-
-        period = {
-            'start': result.fields[1].value,
-            'end': result.fields[2].value
-        }
-
-        item_dates[item_id]['periods'].append(period)
-
-    items = []
-    if keys:
-        models = ndb.get_multi(keys)
-        items.extend(convert_to_item_tos(models, extras=item_dates))
-    else:
-        items = []
-
-    return_items_result(self, items, new_cursor, distance)
 
 
 def return_ids_result(self, ids, new_cursor):
@@ -131,7 +75,6 @@ def _get_items(self, is_new=False):
     end = params.get('end', None)
     limit = params.get('limit')
     cursor = params.get('cursor', None)
-    index_type = params.get('index_type', None)
 
     if lat and lng and distance and start and limit:
         try:
@@ -156,28 +99,12 @@ def _get_items(self, is_new=False):
             return_items_result(self, [], None, distance)
         return
 
-    if index_type and index_type == 'elasticsearch':
-        if is_new:
-            ids, new_cursor = search_new(lat, lng, distance, start, end, cursor=cursor, limit=limit)
-            return_ids_result(self, ids, new_cursor)
-        else:
-            items, new_cursor = search_current(lat, lng, distance, start, end, cursor=cursor, limit=limit)
-            return_items_result(self, items, new_cursor, distance)
+    if is_new:
+        ids, new_cursor = search_new(lat, lng, distance, start, end, cursor=cursor, limit=limit)
+        return_ids_result(self, ids, new_cursor)
     else:
-        r = find_items(lat, lng, distance, start=start, end=end, cursor=cursor, limit=limit, is_new=is_new)
-        if not r:
-            logging.debug('no search results')
-            if is_new:
-                return_ids_result(self, [], None)
-            else:
-                return_items_result(self, [], None, distance)
-            return
-
-        results, new_cursor = r
-        if is_new:
-            _get_items_ids(self, results, new_cursor)
-        else:
-            _get_items_full(self, results, new_cursor, distance)
+        items, new_cursor = search_current(lat, lng, distance, start, end, cursor=cursor, limit=limit)
+        return_items_result(self, items, new_cursor, distance)
 
 
 def return_detail_result(self, items):

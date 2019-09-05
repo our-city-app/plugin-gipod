@@ -21,15 +21,13 @@ from datetime import datetime
 import logging
 
 from dateutil.relativedelta import relativedelta
-from google.appengine.api import search
 from google.appengine.ext import ndb, deferred
 
 from framework.bizz.job import run_job
 from framework.utils.cloud_tasks import create_task, run_tasks
 from mcfw.consts import DEBUG
 from mcfw.rpc import returns, arguments
-from plugins.gipod.bizz import do_request, LOCATION_INDEX, \
-    validate_and_clean_data, do_request_without_processing
+from plugins.gipod.bizz import do_request, validate_and_clean_data, do_request_without_processing
 from plugins.gipod.bizz.elasticsearch import index_docs, delete_docs
 from plugins.gipod.models import ManifestationSettings, Manifestation
 from plugins.gipod.plugin_consts import SYNC_QUEUE
@@ -98,32 +96,21 @@ def _update_one(gipod_id, skip_if_exists=False):
     re_index_manifestation(m)
 
 
-@returns([search.Document])
-@arguments(m_key=ndb.Key, index_types=[unicode])
-def re_index(m_key, index_types=None):
+@returns()
+@arguments(m_key=ndb.Key)
+def re_index(m_key):
     m = m_key.get()
-    return re_index_manifestation(m, index_types=index_types)
+    re_index_manifestation(m)
 
 
-@returns([search.Document])
-@arguments(manifestation=Manifestation, index_types=[unicode])
-def re_index_manifestation(manifestation, index_types=None):
-    if not index_types:
-        index_types = ['search', 'elasticsearch']
-
-    the_index = search.Index(name=LOCATION_INDEX)
-    if 'search' in index_types:
-        the_index.delete(manifestation.search_keys)
-    if 'elasticsearch' in index_types:
-        delete_docs(manifestation.search_keys)
-
-    geo_point = search.GeoPoint(manifestation.data['location']['coordinate']['coordinates'][1],
-                                manifestation.data['location']['coordinate']['coordinates'][0])
+@returns()
+@arguments(manifestation=Manifestation)
+def re_index_manifestation(manifestation):
+    delete_docs(manifestation.search_keys)
 
     manifestation.visible = False
     manifestation.cleanup_date = None
     manifestation.search_keys = []
-    m_docs = []
     docs = []
     now_ = datetime.utcnow()
 
@@ -138,17 +125,7 @@ def re_index_manifestation(manifestation, index_types=None):
         uid = u'%s-%s' % (manifestation.uid, i)
         manifestation.search_keys.append(uid)
 
-
         start_date = datetime.strptime(p['startDateTime'], "%Y-%m-%dT%H:%M:%S")
-        fields = [
-            search.AtomField(name='id', value=uid),
-            search.GeoField(name='location', value=geo_point),
-            search.DateField(name='start_datetime', value=start_date),
-            search.DateField(name='end_datetime', value=end_date)
-        ]
-
-        m_docs.append(search.Document(doc_id=uid, fields=fields))
-
         doc = {
             "location": {
                 "lat": manifestation.data['location']['coordinate']['coordinates'][1],
@@ -165,19 +142,15 @@ def re_index_manifestation(manifestation, index_types=None):
         docs.append({'uid': uid, 'data': doc})
 
     manifestation.put()
-    if 'search' in index_types and m_docs:
-        the_index.put(m_docs)
-    if 'elasticsearch' in index_types and docs:
-        index_docs(docs)
-    return m_docs
+    index_docs(docs)
 
 
-def re_index_all(index_types=None):
-    run_job(re_index_query, [], re_index_worker, [index_types])
+def re_index_all():
+    run_job(re_index_query, [], re_index_worker, [])
 
 
-def re_index_worker(m_key, index_types=None):
-    re_index(m_key, index_types=index_types)
+def re_index_worker(m_key):
+    re_index(m_key)
 
 
 def re_index_query():
@@ -209,8 +182,6 @@ def cleanup_deleted_worker(m_key):
 
     m = m_key.get()
 
-    the_index = search.Index(name=LOCATION_INDEX)
-    the_index.delete(m.search_keys)
     delete_docs(m.search_keys)
 
     m.cleanup_date = None

@@ -16,12 +16,3 @@
 # limitations under the License.
 #
 # @@license_version:1.5@@
-
-
-def drop_index(the_index):
-    while True:
-        search_result = the_index.get_range(ids_only=True)
-        ids = [r.doc_id for r in search_result.results]
-        if not ids:
-            break
-        the_index.delete(ids)

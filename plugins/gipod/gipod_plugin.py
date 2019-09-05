@@ -27,6 +27,7 @@ from plugins.gipod.handlers import GipodItemsHandler, GipodNewItemsHandler, \
     GipodItemDetailsHandler
 from plugins.gipod.handlers.cron import GipodCleanupTimedOutHandler, GipodCleanupDeletedHandler, \
     GipodSyncHandler
+from plugins.gipod.handlers.preview import GipodPreviewHandler
 from plugins.gipod.to import GipodPluginConfiguration
 
 
@@ -46,3 +47,4 @@ class GipodPlugin(Plugin):
             yield Handler(url='/admin/cron/gipod/cleanup/timed_out', handler=GipodCleanupTimedOutHandler)
             yield Handler(url='/admin/cron/gipod/cleanup/deleted', handler=GipodCleanupDeletedHandler)
             yield Handler(url='/admin/cron/gipod/sync', handler=GipodSyncHandler)
+            yield Handler(url='/admin/gipod/preview', handler=GipodPreviewHandler)

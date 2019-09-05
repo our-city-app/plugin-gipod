@@ -21,15 +21,13 @@ from datetime import datetime
 import logging
 
 from dateutil.relativedelta import relativedelta
-from google.appengine.api import search
 from google.appengine.ext import ndb, deferred
 
 from framework.bizz.job import run_job
 from framework.utils.cloud_tasks import create_task, run_tasks
 from mcfw.consts import DEBUG
 from mcfw.rpc import returns, arguments
-from plugins.gipod.bizz import do_request, LOCATION_INDEX, \
-    validate_and_clean_data, do_request_without_processing
+from plugins.gipod.bizz import do_request, validate_and_clean_data, do_request_without_processing
 from plugins.gipod.bizz.elasticsearch import index_doc, delete_docs
 from plugins.gipod.models import WorkAssignmentSettings, WorkAssignment
 from plugins.gipod.plugin_consts import SYNC_QUEUE
@@ -98,24 +96,17 @@ def _update_one(gipod_id, skip_if_exists=False):
     re_index_workassignment(m)
 
 
-@returns([search.Document])
-@arguments(m_key=ndb.Key, index_types=[unicode])
-def re_index(m_key, index_types=None):
+@returns()
+@arguments(m_key=ndb.Key)
+def re_index(m_key):
     m = m_key.get()
-    return re_index_workassignment(m, index_types=index_types)
+    re_index_workassignment(m)
 
 
-@returns([search.Document])
-@arguments(workassignment=WorkAssignment, index_types=[unicode])
-def re_index_workassignment(workassignment, index_types=None):
-    if not index_types:
-        index_types = ['search', 'elasticsearch']
-
-    the_index = search.Index(name=LOCATION_INDEX)
-    if 'search' in index_types:
-        the_index.delete(workassignment.search_keys)
-    if 'elasticsearch' in index_types:
-        delete_docs(workassignment.search_keys)
+@returns()
+@arguments(workassignment=WorkAssignment)
+def re_index_workassignment(workassignment):
+    delete_docs(workassignment.search_keys)
 
     workassignment.visible = False
     workassignment.cleanup_date = None
@@ -132,20 +123,9 @@ def re_index_workassignment(workassignment, index_types=None):
     workassignment.visible = True
     workassignment.cleanup_date = end_date
     workassignment.search_keys.append(uid)
-
-    geo_point = search.GeoPoint(workassignment.data['location']['coordinate']['coordinates'][1],
-                                workassignment.data['location']['coordinate']['coordinates'][0])
-    start_date = datetime.strptime(workassignment.data['startDateTime'], "%Y-%m-%dT%H:%M:%S")
-    fields = [
-        search.AtomField(name='id', value=uid),
-        search.GeoField(name='location', value=geo_point),
-        search.DateField(name='start_datetime', value=start_date),
-        search.DateField(name='end_datetime', value=end_date)
-    ]
-
     workassignment.put()
-    m_doc = search.Document(doc_id=uid, fields=fields)
 
+    start_date = datetime.strptime(workassignment.data['startDateTime'], "%Y-%m-%dT%H:%M:%S")
     doc = {
         "location": {
             "lat": workassignment.data['location']['coordinate']['coordinates'][1],
@@ -159,22 +139,15 @@ def re_index_workassignment(workassignment, index_types=None):
         }
     }
 
-    if not index_types:
-        index_types = ['search', 'elasticsearch']
-    if 'search' in index_types:
-        the_index.put(m_doc)
-    if 'elasticsearch' in index_types:
-        index_doc(uid, doc)
-
-    return [m_doc]
+    index_doc(uid, doc)
 
 
-def re_index_all(index_types=None):
-    run_job(re_index_query, [], re_index_worker, [index_types])
+def re_index_all():
+    run_job(re_index_query, [], re_index_worker, [])
 
 
-def re_index_worker(m_key, index_types=None):
-    re_index(m_key, index_types=index_types)
+def re_index_worker(m_key):
+    re_index(m_key)
 
 
 def re_index_query():
@@ -206,8 +179,6 @@ def cleanup_deleted_worker(m_key):
 
     m = m_key.get()
 
-    the_index = search.Index(name=LOCATION_INDEX)
-    the_index.delete(m.search_keys)
     delete_docs(m.search_keys)
 
     m.cleanup_date = None

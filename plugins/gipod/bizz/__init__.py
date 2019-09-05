@@ -23,15 +23,12 @@ import logging
 import time
 import urllib
 
-from google.appengine.api import urlfetch, search
+from google.appengine.api import urlfetch
 
 from plugins.gipod.models import Manifestation
 from plugins.gipod.plugin_consts import GIPOD_API_URL
 from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, MapItemDetailSectionTO, CoordsListTO, \
     PolygonGeometryTO, MultiPolygonGeometryTO, PolygonTO, LineStringGeometryTO, MultiLineStringGeometryTO
-from plugins.gipod.utils import drop_index
-
-LOCATION_INDEX = 'LOCATION_INDEX'
 
 
 def do_request_without_processing(relative_url, params=None):
@@ -58,66 +55,8 @@ def do_request(relative_url, params=None):
 def re_index_all():
     from plugins.gipod.bizz.manifestations import re_index_all as re_index_all_workassignments
     from plugins.gipod.bizz.workassignments import re_index_all as re_index_all_manifestations
-    the_index = search.Index(name=LOCATION_INDEX)
-    drop_index(the_index)
     re_index_all_workassignments()
     re_index_all_manifestations()
-
-
-def find_items(lat, lng, distance, start=None, end=None, cursor=None, limit=10, is_new=False, is_test=False):
-
-    def get_location_sort_options(lat_, lon_, distance_):
-        loc_expr = "distance(location, geopoint(%f, %f))" % (lat_, lon_)
-        sort_expr = search.SortExpression(expression=loc_expr,
-                                          direction=search.SortExpression.ASCENDING,
-                                          default_value=distance_ + 1)
-        return search.SortOptions(expressions=[sort_expr])
-
-    the_index = search.Index(name=LOCATION_INDEX)
-
-    try:
-        start_date = None
-        if start and start in ('today', 'now', 'future'):
-            start_date = str(datetime.today().date())
-        elif start:
-            start_date = start
-        if lat and lng and distance:
-            q = "distance(location, geopoint(%f, %f)) < %f" % (lat, lng, distance)
-            if start_date and end:
-                if is_new:
-                    q += ' AND start_datetime >= %s AND start_datetime < %s' % (start_date, end)
-                else:
-                    q += ' AND ((start_datetime >= %s AND start_datetime < %s) OR (start_datetime < %s AND end_datetime > %s))' % (start_date, end, start_date, start_date)
-            elif start_date:
-                if start == 'future' or not is_test:
-                    q += ' AND start_datetime >= %s' % start_date
-                else:
-                    q += ' AND start_datetime: %s' % start_date
-            sort_options = get_location_sort_options(lat, lng, distance)
-        elif start_date:
-            if start == 'future':
-                q = 'start_datetime >= %s' % start_date
-            else:
-                q = 'start_datetime: %s' % start_date
-            sort_options = None
-        else:
-            return None
-
-        query = search.Query(query_string=q,
-                             options=search.QueryOptions(returned_fields=['id', 'start_datetime', 'end_datetime'],
-                                                         sort_options=sort_options,
-                                                         limit=limit,
-                                                         cursor=search.Cursor(cursor)))
-        start_time = time.time()
-        search_result = the_index.search(query)
-        took_time = time.time() - start_time
-        logging.info('Search took {0:.3f}s'.format(took_time))
-        if search_result.results:
-            return search_result.results, search_result.cursor.web_safe_string if search_result.cursor else None
-    except:
-        logging.error('Search query error', exc_info=True)
-
-    return None
 
 
 def validate_and_clean_data(type_, uid, data):
