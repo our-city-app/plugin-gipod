@@ -114,7 +114,7 @@ def re_index_workassignment(workassignment):
     end_date = datetime.strptime(workassignment.data['endDateTime'], "%Y-%m-%dT%H:%M:%S")
     if end_date <= now_:
         workassignment.put()
-        return []
+        return
     
     uid = workassignment.uid
 
