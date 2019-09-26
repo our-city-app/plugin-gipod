@@ -84,15 +84,40 @@ class MapGeometryTO(object_factory):
         super(MapGeometryTO, self).__init__('type', MAP_GEOMETRY_MAPPING)
 
 
+class MapSectionType(object):
+    TEXT = 'text'
+    GEOMETRY = 'geometry'
+
+
+class TextSectionTO(TO):
+    type = unicode_property('type', default=MapSectionType.TEXT)
+    title = unicode_property('title')
+    description = unicode_property('description')
+
+
+class GeometrySectionTO(TO):
+    type = unicode_property('type', default=MapSectionType.GEOMETRY)
+    title = unicode_property('title')
+    description = unicode_property('description')
+    geometry = typed_property('geometry', MapGeometryTO(), True)
+
+
+MAP_SECTION_MAPPING = {
+    MapSectionType.TEXT: TextSectionTO,
+    MapSectionType.GEOMETRY: GeometrySectionTO,
+}
+
+
+class MapSectionTO(object_factory):
+    type = unicode_property('type')
+
+    def __init__(self):
+        super(MapSectionTO, self).__init__('type', MAP_SECTION_MAPPING)
+
+
 class MapIconTO(TO):
     id = unicode_property('1')
     color = unicode_property('2')
-
-
-class MapItemDetailSectionTO(TO):
-    title = unicode_property('1')
-    description = unicode_property('2')
-    geometry = typed_property('3', MapGeometryTO(), True)
 
 
 class MapItemTO(TO):
@@ -104,9 +129,9 @@ class MapItemTO(TO):
 
 
 class MapItemDetailsTO(TO):
-    id = unicode_property('1')
-    geometry = typed_property('2', MapGeometryTO(), True)
-    sections = typed_property('3', MapItemDetailSectionTO, True)
+    id = unicode_property('id')
+    geometry = typed_property('geometry', MapGeometryTO(), True)
+    sections = typed_property('sections', MapSectionTO(), True)
 
 
 class GetMapItemsResponseTO(TO):

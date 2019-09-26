@@ -25,8 +25,9 @@ from google.appengine.api import urlfetch
 
 from plugins.gipod.models import Manifestation
 from plugins.gipod.plugin_consts import GIPOD_API_URL
-from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, MapItemDetailSectionTO, CoordsListTO, \
-    PolygonGeometryTO, MultiPolygonGeometryTO, PolygonTO, LineStringGeometryTO, MultiLineStringGeometryTO
+from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, CoordsListTO, \
+    PolygonGeometryTO, MultiPolygonGeometryTO, PolygonTO, LineStringGeometryTO, MultiLineStringGeometryTO, \
+    TextSectionTO, GeometrySectionTO
 
 
 def do_request_without_processing(relative_url, params=None):
@@ -336,15 +337,13 @@ def convert_to_item_details_to(m):
             else:
                 periods_message.append("%s" % (contactDetails['organisation']))
 
-        to.sections.append(MapItemDetailSectionTO(title=None,
-                                                  description=u'\n'.join(periods_message),
-                                                  geometry=[]))
+        to.sections.append(TextSectionTO(title=None,
+                                         description=u'\n'.join(periods_message)))
 
     effects = hindrance.get('effects') or []
     if effects:
-        to.sections.append(MapItemDetailSectionTO(title=u'Hinder',
-                                                  description=u'\n'.join(effects),
-                                                  geometry=[]))
+        to.sections.append(TextSectionTO(title=u'Hinder',
+                                         description=u'\n'.join(effects)))
                                    
     diversions = m.data.get('diversions') or []
     for i, diversion in enumerate(diversions):
@@ -356,8 +355,8 @@ def convert_to_item_details_to(m):
         if diversion_streets:
             diversions_message.append('U kan ook volgende straten volgen:\n%s' % ('\n'.join(diversion_streets)))
 
-        to.sections.append(MapItemDetailSectionTO(title=u'Omleiding %s' % (i + 1),
-                                                  description=u'\n'.join(diversions_message),
-                                                  geometry=get_geometry_tos(m.uid, diversion['geometry'], '#2dc219')))
+        to.sections.append(GeometrySectionTO(title=u'Omleiding %s' % (i + 1),
+                                             description=u'\n'.join(diversions_message),
+                                             geometry=get_geometry_tos(m.uid, diversion['geometry'], '#2dc219')))
 
     return to
