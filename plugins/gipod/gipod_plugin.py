@@ -22,7 +22,7 @@ from framework.utils.plugins import Handler
 from mcfw.consts import DEBUG
 from mcfw.rpc import parse_complex_value
 from plugins.gipod.handlers import GipodItemsHandler, GipodNewItemsHandler, \
-    GipodItemDetailsHandler
+    GipodItemDetailsHandler, GipodMapHandler
 from plugins.gipod.handlers.cron import GipodCleanupTimedOutHandler, GipodCleanupDeletedHandler, \
     GipodSyncHandler
 from plugins.gipod.handlers.preview import GipodPreviewHandler
@@ -38,6 +38,7 @@ class GipodPlugin(Plugin):
 
     def get_handlers(self, auth):
         if auth == Handler.AUTH_UNAUTHENTICATED:
+            yield Handler(url='/plugins/gipod/map', handler=GipodMapHandler)
             yield Handler(url='/plugins/gipod/items', handler=GipodItemsHandler)
             yield Handler(url='/plugins/gipod/items/new', handler=GipodNewItemsHandler)
             yield Handler(url='/plugins/gipod/items/detail', handler=GipodItemDetailsHandler)

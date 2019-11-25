@@ -164,6 +164,12 @@ class AuthValidationHandler(webapp2.RequestHandler):
         return super(AuthValidationHandler, self).dispatch()
 
 
+class GipodMapHandler(AuthValidationHandler):
+    
+    def post(self):
+        logging.debug(self.request.body)
+
+
 class GipodItemsHandler(AuthValidationHandler):
 
     def post(self):
