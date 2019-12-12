@@ -21,13 +21,14 @@ import logging
 import time
 import urllib
 
-from google.appengine.ext import ndb
+from google.appengine.ext import ndb, deferred
 import webapp2
 
 from framework.plugin_loader import get_config
 from framework.utils import get_epoch_from_datetime
 from mcfw.rpc import serialize_complex_value
-from plugins.gipod.bizz import get_workassignment_icon, get_manifestation_icon, convert_to_item_tos, convert_to_item_details_tos
+from plugins.gipod.bizz import get_workassignment_icon, get_manifestation_icon, convert_to_item_tos, convert_to_item_details_tos, \
+    save_last_load_map_request
 from plugins.gipod.bizz.elasticsearch import search_new, search_current
 from plugins.gipod.models import WorkAssignment, Manifestation, Consumer
 from plugins.gipod.plugin_consts import NAMESPACE
@@ -168,6 +169,10 @@ class GipodMapHandler(AuthValidationHandler):
     
     def post(self):
         logging.debug(self.request.body)
+        params = json.loads(self.request.body) if self.request.body else {}
+        user_id = params.get('user_id')
+        if user_id:
+            deferred.defer(save_last_load_map_request, user_id, datetime.utcnow())
 
 
 class GipodItemsHandler(AuthValidationHandler):

@@ -23,11 +23,12 @@ import urllib
 
 from google.appengine.api import urlfetch
 
-from plugins.gipod.models import Manifestation
+from plugins.gipod.models import Manifestation, MapUser
 from plugins.gipod.plugin_consts import GIPOD_API_URL
 from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, CoordsListTO, \
     PolygonGeometryTO, MultiPolygonGeometryTO, PolygonTO, LineStringGeometryTO, MultiLineStringGeometryTO, \
     TextSectionTO, GeometrySectionTO
+from plugins.gipod.utils import get_app_id_from_user_id
 
 
 def do_request_without_processing(relative_url, params=None):
@@ -360,3 +361,17 @@ def convert_to_item_details_to(m):
                                              geometry=get_geometry_tos(m.uid, diversion['geometry'], '#2dc219')))
 
     return to
+
+
+def save_last_load_map_request(user_id, d):
+    mu_key = MapUser.create_key(user_id)
+    mu =mu_key .get()
+    if not mu:
+        mu = MapUser(key=mu_key)
+        mu.app_id = get_app_id_from_user_id(user_id)
+
+    if mu.last_load_request and mu.last_load_request > d:
+        return
+
+    mu.last_load_request = d
+    mu.put()

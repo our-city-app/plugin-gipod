@@ -101,3 +101,19 @@ class ElasticsearchSettings(NdbModel):
     @classmethod
     def create_key(cls):
         return ndb.Key(cls, u'ElasticsearchSettings', namespace=cls.NAMESPACE)
+    
+    
+class MapUser(NdbModel):
+    NAMESPACE = NAMESPACE
+
+    app_id = ndb.StringProperty()
+    last_load_request = ndb.DateTimeProperty()
+
+    @property
+    def user_id(self):
+        return self.key.id().decode('utf8')
+
+    @classmethod
+    def create_key(cls, user_id):
+        return ndb.Key(cls, user_id, namespace=cls.NAMESPACE)
+    

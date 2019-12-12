@@ -14,3 +14,24 @@
 # limitations under the License.
 #
 # @@license_version:1.5@@
+
+from framework.utils import azzert
+from mcfw.rpc import returns, arguments
+
+
+@returns(tuple)
+@arguments(app_user_email=unicode)
+def get_app_user_tuple_by_email(app_user_email):
+    azzert('/' not in app_user_email, "app_user_email should not contain /")
+    if ':' in app_user_email:
+        human_user_email, app_id = app_user_email.split(':')
+    else:
+        APP_ID_ROGERTHAT = u"rogerthat"
+        human_user_email, app_id = app_user_email, APP_ID_ROGERTHAT
+    return human_user_email, app_id
+
+
+@returns(unicode)
+@arguments(user_id=unicode)
+def get_app_id_from_user_id(user_id):
+    return get_app_user_tuple_by_email(user_id)[1]
