@@ -36,6 +36,7 @@ NOT_IMPORTANT_COLOR = '#eeb309'
 
 
 def do_request_without_processing(relative_url, params=None):
+    # type: (str, dict) -> urlfetch._URLFetchResult
     url = '%s%s' % (GIPOD_API_URL, relative_url)
     if params:
         query_params = urllib.urlencode(params)

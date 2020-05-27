@@ -29,7 +29,7 @@ from framework.bizz.job import run_job, MODE_BATCH
 from framework.consts import HIGH_LOAD_CONTROLLER_QUEUE
 from framework.utils import chunks
 from framework.utils.cloud_tasks import create_task, run_tasks, schedule_tasks
-from plugins.gipod.bizz import do_request, validate_and_clean_data
+from plugins.gipod.bizz import do_request, validate_and_clean_data, do_request_without_processing
 from plugins.gipod.bizz.elasticsearch import delete_docs, index_doc_operations, delete_doc_operations, \
     execute_bulk_request
 from plugins.gipod.models import Manifestation, SyncSettings, WorkAssignment
@@ -73,6 +73,17 @@ def cleanup_timed_out():
     run_job(cleanup_timed_out_query, [WorkAssignment, current_date], re_index, [], mode=MODE_BATCH)
 
 
+def fetch_iter(query, keys_only=True):
+    # type: (ndb.Query, ndb.QueryOptions) -> Iterable[ndb.Key]
+    cursor = None
+    has_more = True
+    while has_more:
+        models, cursor, has_more = query.fetch_page(ndb.datastore_rpc.BaseConnection.MAX_GET_KEYS, start_cursor=cursor,
+                                                    keys_only=keys_only)
+        for model in models:
+            yield model
+
+
 def cleanup_deleted():
     # Note: items might still be available using the /<type>/<id> endpoint,
     # but since it's not returned by the list result, delete them anyway since they probably
@@ -80,13 +91,25 @@ def cleanup_deleted():
     # TODO might wanna use this method to create / update new items too
     for type in (Manifestation.TYPE, WorkAssignment.TYPE):
         end_date = datetime.now() + (relativedelta(days=1) if DEBUG else relativedelta(months=12))
-        params = {'limit': '100000', 'enddate': end_date.strftime('%Y-%m-%d')}
         m = mapping[type]
         url = m['list']
         cls = m['class']
-        gipod_ids = {cls.create_key(type, item['gipodId']).id() for item in do_request(url, params)}
+        per_page = 2000
+        params = {'limit': '%s' % per_page, 'enddate': end_date.strftime('%Y-%m-%d')}
+        gipod_ids = set()
+        offset = 0
+        while True:
+            items = do_request(url, params)
+            if not items:
+                break
+            offset += per_page
+            params['offset'] = '%d' % offset
+            for item in items:
+                gipod_ids.add(cls.create_key(type, item['gipodId']).id())
+        # Note: this api is not great and returns different results when using 'offset'
+        # Not using offset causes memory usage to skyrocket so we can't do that
         logging.debug('Found %d %s items on gipod', len(gipod_ids), cls._get_kind())
-        our_item_keys = {key for key in cls.list().iter(keys_only=True)}
+        our_item_keys = {key for key in fetch_iter(cls.list())}
         to_delete = []
         for our_key in our_item_keys:
             if our_key.id() not in gipod_ids:
@@ -218,5 +241,15 @@ def cleanup_timed_out_query(clazz, current_date):
 
 
 def cleanup_deleted_worker(keys):
-    delete_docs([key.id() for key in keys])
-    ndb.delete_multi(keys)
+    to_delete = []
+    # Gipod api does always not return the same results when doing the same query twice.
+    # For this reason we doublecheck if an item is deleted or not by fetching its details.
+    for key in keys:
+        type_, gipod_id = key.split('-')
+        item = mapping[type_]
+        result = do_request_without_processing(item['detail'] % gipod_id)
+        if result.status_code == 404:
+            to_delete.append(key)
+    logging.debug('Removing %d/%d items', len(to_delete), len(keys))
+    delete_docs([key.id() for key in to_delete])
+    ndb.delete_multi(to_delete)
