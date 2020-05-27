@@ -250,5 +250,6 @@ def cleanup_deleted_worker(keys):
         if result.status_code == 404:
             to_delete.append(key)
     logging.debug('Removing %d/%d items', len(to_delete), len(keys))
-    delete_docs([key.id() for key in to_delete])
-    ndb.delete_multi(to_delete)
+    if to_delete:
+        delete_docs([key.id() for key in to_delete])
+        ndb.delete_multi(to_delete)
