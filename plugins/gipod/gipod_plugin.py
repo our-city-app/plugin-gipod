@@ -21,13 +21,11 @@ from framework.plugin_loader import Plugin
 from framework.utils.plugins import Handler
 from mcfw.consts import DEBUG
 from mcfw.rpc import parse_complex_value
-from plugins.gipod.handlers import GipodItemsHandler, GipodNewItemsHandler, \
+from plugins.gipod.handlers import GipodItemsHandler, GipodItemIdsHandler, \
     GipodItemDetailsHandler, GipodMapHandler
 from plugins.gipod.handlers.cron import GipodCleanupTimedOutHandler, GipodCleanupDeletedHandler, \
     GipodSyncHandler
-from plugins.gipod.handlers.preview import GipodPreviewHandler
 from plugins.gipod.to import GipodPluginConfiguration
-
 
 class GipodPlugin(Plugin):
     def __init__(self, configuration):
@@ -40,10 +38,9 @@ class GipodPlugin(Plugin):
         if auth == Handler.AUTH_UNAUTHENTICATED:
             yield Handler(url='/plugins/gipod/map', handler=GipodMapHandler)
             yield Handler(url='/plugins/gipod/items', handler=GipodItemsHandler)
-            yield Handler(url='/plugins/gipod/items/new', handler=GipodNewItemsHandler)
+            yield Handler(url='/plugins/gipod/items/ids', handler=GipodItemIdsHandler)
             yield Handler(url='/plugins/gipod/items/detail', handler=GipodItemDetailsHandler)
         if auth == Handler.AUTH_ADMIN:
             yield Handler(url='/admin/cron/gipod/cleanup/timed_out', handler=GipodCleanupTimedOutHandler)
             yield Handler(url='/admin/cron/gipod/cleanup/deleted', handler=GipodCleanupDeletedHandler)
             yield Handler(url='/admin/cron/gipod/sync', handler=GipodSyncHandler)
-            yield Handler(url='/admin/gipod/preview', handler=GipodPreviewHandler)

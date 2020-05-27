@@ -16,188 +16,149 @@
 # @@license_version:1.5@@
 
 import base64
-from datetime import datetime
+import itertools
 import json
 import logging
-import time
 
 from google.appengine.api import urlfetch
-from google.appengine.ext import ndb
+from mcfw.consts import DEBUG
+from typing import Dict, Tuple, Iterable, List, Union
 
-from plugins.gipod.models import WorkAssignment, Manifestation, \
-    ElasticsearchSettings
+from plugins.gipod.models import WorkAssignment, Manifestation, ElasticsearchSettings, ItemFilterType
 
 
 def get_elasticsearch_config():
+    # type: () -> ElasticsearchSettings
     settings = ElasticsearchSettings.create_key().get()
     if not settings:
         raise Exception('elasticsearch settings not found')
+    if not settings.items_index:
+        raise Exception('items_index is missing on elasticsearch settings')
+    return settings
 
-    return settings.base_url, settings.auth_username, settings.auth_password
+
+def _request(config, path, method=urlfetch.GET, payload=None, allowed_status_codes=(200, 204)):
+    # type: (ElasticsearchSettings, str, int, Union[Dict, str], Tuple[int]) -> Dict
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': 'Basic %s' % base64.b64encode('%s:%s' % (config.auth_username, config.auth_password))
+    }
+    if payload:
+        if isinstance(payload, basestring):
+            headers['Content-Type'] = 'application/x-ndjson'
+        else:
+            headers['Content-Type'] = 'application/json'
+    data = json.dumps(payload) if isinstance(payload, dict) else payload
+    url = config.base_url + path
+    if DEBUG:
+        if data:
+            logging.debug('%s\n%s', url, data)
+        else:
+            logging.debug(url)
+    result = urlfetch.fetch(url, data, method, headers, deadline=30)  # type: urlfetch._URLFetchResult
+    if result.status_code not in allowed_status_codes:
+        logging.debug(result.content)
+        raise Exception('Invalid response from elasticsearch: %s' % result.status_code)
+    if result.headers.get('Content-Type').startswith('application/json'):
+        return json.loads(result.content)
+    return result.content
+
+
+def delete_doc_operations(uid):
+    yield {'delete': {'_id': uid}}
+
+
+def index_doc_operations(uid, doc):
+    yield {'index': {'_id': uid}}
+    yield doc
+
+
+def execute_bulk_request(operations):
+    # type: (Iterable[Dict]) -> List[Dict]
+    config = get_elasticsearch_config()
+    path = '/%s/_bulk' % config.items_index
+    # NDJSON - one operation per line
+    payload = '\n'.join([json.dumps(op) for op in operations])
+    payload += '\n'
+    result = _request(config, path, urlfetch.POST, payload)
+    if result['errors'] is True:
+        logging.debug(result)
+        # throw the first error found
+        for item in result['items']:
+            k = item.keys()[0]
+            if 'error' in item[k]:
+                reason = item[k]['error']['reason']
+                raise Exception(reason)
+    return result['items']
 
 
 def delete_index():
-    base_url, es_user, es_passwd = get_elasticsearch_config()
-    headers = {
-        'Authorization': 'Basic %s' % base64.b64encode("%s:%s" % (es_user, es_passwd))
-    }
-    result = urlfetch.fetch('%s/gipod' % base_url, method=urlfetch.DELETE, headers=headers, deadline=30)
-    logging.info('Deleting gipod index: %s %s', result.status_code, result.content)
-
-    if result.status_code not in (200, 404):
-        raise Exception('Failed to delete gipod index')
+    config = get_elasticsearch_config()
+    path = '/%s' % config.items_index
+    return _request(config, path, urlfetch.DELETE)
 
 
 def create_index():
-    base_url, es_user, es_passwd = get_elasticsearch_config()
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Basic %s' % base64.b64encode("%s:%s" % (es_user, es_passwd))
-    }
-
+    config = get_elasticsearch_config()
     request = {
-        "mappings": {
-            "properties": {
-                "location": {
-                    "type": "geo_point"
+        'mappings': {
+            'properties': {
+                'location': {
+                    'type': 'geo_point'
                 },
-                "start_date": {
-                    "type": "date",
-                    "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis"
+                'start_date': {
+                    'type': 'date'
                 },
-                "end_date": {
-                    "type": "date",
-                    "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis"
+                'end_date': {
+                    'type': 'date'
                 },
-                "time_frame": {
-                    "type": "date_range",
-                    "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis"
+                'time_frames': {
+                    'type': 'date_range'
                 }
             }
         }
     }
-
-    json_request = json.dumps(request)
-
-    result = urlfetch.fetch('%s/gipod' % base_url, json_request, method=urlfetch.PUT, headers=headers, deadline=30)
-    logging.info('Creating gipod index: %s %s', result.status_code, result.content)
-
-    if result.status_code != 200:
-        raise Exception('Failed to create gipod index')
+    path = '/%s' % config.items_index
+    return _request(config, path, urlfetch.PUT, request)
 
 
 def delete_docs(uids):
-    for uid in uids:
-        delete_doc(uid)
+    operations = itertools.chain.from_iterable([delete_doc_operations(uid) for uid in uids])
+    return execute_bulk_request(operations)
 
 
-def delete_doc(uid):
-    base_url, es_user, es_passwd = get_elasticsearch_config()
-    headers = {
-        'Authorization': 'Basic %s' % base64.b64encode("%s:%s" % (es_user, es_passwd))
-    }
-    result = urlfetch.fetch('%s/gipod/_doc/%s' % (base_url, uid), method=urlfetch.DELETE, headers=headers, deadline=30)
-
-    if result.status_code not in (200, 404):
-        logging.info('Deleting gipod index: %s %s', result.status_code, result.content)
-        raise Exception('Failed to delete index %s', uid)
+def index_documents(docs):
+    # type: (List[Tuple[str, Dict]]) -> List[Dict]
+    operations = itertools.chain.from_iterable([index_doc_operations(uid, doc) for uid, doc in docs])
+    return execute_bulk_request(operations)
 
 
-def index_docs(docs):
-    for d in docs:
-        index_doc(d['uid'], d['data'])
+def perform_search(lat, lon, distance, start, end, cursor=None, limit=10, filter_type=ItemFilterType.RANGE):
+    new_cursor, result_data = _perform_search(lat, lon, distance, start, end, cursor, limit, filter_type)
+    keys = get_model_keys_from_search_result_ids([hit['_id'] for hit in result_data['hits']['hits']])
+    return keys, new_cursor
 
 
-def index_doc(uid, data):
-    base_url, es_user, es_passwd = get_elasticsearch_config()
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Basic %s' % base64.b64encode("%s:%s" % (es_user, es_passwd))
-    }
-
-    json_request = json.dumps(data)
-
-    result = urlfetch.fetch('%s/gipod/_doc/%s' % (base_url, uid), json_request, method=urlfetch.PUT, headers=headers, deadline=30)
-    if result.status_code not in (200, 201):
-        logging.info('Creating gipod index: %s %s', result.status_code, result.content)
-        raise Exception('Failed to create index %s', uid)
-
-
-def search_new(lat, lon, distance, start, end, cursor=None, limit=10):
-    new_cursor, result_data = _search(lat, lon, distance, start, end, cursor, limit, is_new=True)
-
-    ids = set()
-    for hit in result_data['hits']['hits']:
-        uid = hit['_id']
-        parts = uid.split('-')
-
-        if len(parts) == 2:
-            type_, gipod_id = parts
-        else:
-            type_, gipod_id, _ = parts
-
-        item_id = '%s-%s' % (type_, gipod_id)
-        ids.add(item_id)
-
-    return list(ids), new_cursor
-
-
-def search_current(lat, lon, distance, start, end, cursor=None, limit=10):
-    from plugins.gipod.bizz import convert_to_item_tos
-    start_time = time.time()
-    new_cursor, result_data = _search(lat, lon, distance, start, end, cursor, limit, is_new=False)
-    took_time = time.time() - start_time
-    logging.info('debugging.search_current _search {0:.3f}s'.format(took_time))
+def get_model_keys_from_search_result_ids(ids):
     keys = set()
-    item_dates = {}
-
-    start_time = time.time()
-    for hit in result_data['hits']['hits']:
-        uid = hit['_id']
+    for uid in ids:
         parts = uid.split('-')
 
         if len(parts) == 2:
             type_, gipod_id = parts
         else:
             type_, gipod_id, _ = parts
-
-        item_id = '%s-%s' % (type_, gipod_id)
 
         if type_ == 'w':
             keys.add(WorkAssignment.create_key(WorkAssignment.TYPE, gipod_id))
         elif type_ == 'm':
             keys.add(Manifestation.create_key(Manifestation.TYPE, gipod_id))
-
-        if item_id not in item_dates:
-            item_dates[item_id] = {'periods': []}
-
-        period = {
-            'start': datetime.strptime(hit['_source']['start_date'], "%Y-%m-%d %H:%M:%S"),
-            'end': datetime.strptime(hit['_source']['end_date'], "%Y-%m-%d %H:%M:%S")
-        }
-
-        item_dates[item_id]['periods'].append(period)
-
-    took_time = time.time() - start_time
-    logging.info('debugging.search_current hits {0:.3f}s'.format(took_time))
-
-    if keys:
-        start_time = time.time()
-        models = ndb.get_multi(keys)
-        took_time = time.time() - start_time
-        logging.info('debugging.search_current ndb.get_multi {0:.3f}s'.format(took_time))
-
-        start_time = time.time()
-        items = convert_to_item_tos(models, extras=item_dates)
-        took_time = time.time() - start_time
-        logging.info('debugging.search_current convert_to_item_tos {0:.3f}s'.format(took_time))
-    else:
-        items = []
-
-    return items, new_cursor
+    if None in keys:
+        keys.remove(None)
+    return keys
 
 
-def _search(lat, lon, distance, start, end, cursor, limit, is_new=False):
+def _perform_search(lat, lon, distance, start, end, cursor, limit, filter_type):
     # we can only fetch up to 10000 items with from param
     start_offset = long(cursor) if cursor else 0
 
@@ -206,82 +167,66 @@ def _search(lat, lon, distance, start, end, cursor, limit, is_new=False):
     if limit <= 0:
         return {'cursor': None, 'ids': []}
 
-    d = {
-        "size": limit,
-        "from": start_offset,
-        "query": {
-            "bool" : {
-                "must" : {
-                    "match_all" : {}
+    query = {
+        'size': limit,
+        'from': start_offset,
+        'query': {
+            'bool': {
+                'must': {
+                    'match_all': {}
                 },
-                "filter" : [
+                'filter': [
                     {
-                        "geo_distance" : {
-                            "distance" : "%sm" % distance,
-                            "location" : {
-                                "lat" :lat,
-                                "lon" : lon
+                        'geo_distance': {
+                            'distance': '%sm' % distance,
+                            'location': {
+                                'lat': lat,
+                                'lon': lon
                             }
                         }
                     }
                 ]
             }
         },
-        "sort" : [
-            {"_geo_distance" : {
-                "location" : {
-                    "lat" : lat,
-                    "lon" : lon
+        'sort': [{
+            '_geo_distance': {
+                'location': {
+                    'lat': lat,
+                    'lon': lon
                 },
-                "order" : "asc",
-                "unit" : "m"}
+                'order': 'asc',
+                'unit': 'm'
             }
-        ]
+        }]
     }
-    if is_new:
-        d['query']['bool']['filter'].append({
-            "range": {
-                "start_date" : {
-                    "gte" : start,
-                    "lt" : end,
-                    "relation" : "within"
-                 }
+
+    if filter_type == ItemFilterType.START_DATE:
+        query['query']['bool']['filter'].append({
+            'range': {
+                'start_date': {
+                    'gte': start,
+                    'lt': end,
+                    'relation': 'within'
+                }
             }
         })
     else:
-        if start and end:
-            tf = {
-                "gte" : start,
-                "lte" : end,
-                "relation" : "intersects"
-            }
-        else:
-            tf = {
-                "gte" : start,
-                "relation" : "intersects"
-            }
-        d['query']['bool']['filter'].append({
-            "range": {
-                "time_frame" : tf
+        tf = {
+            'gte': start,
+            'relation': 'intersects'
+        }
+        if end:
+            tf['lte'] = end
+
+        query['query']['bool']['filter'].append({
+            'range': {
+                'time_frames': tf
             }
         })
 
-    base_url, es_user, es_passwd = get_elasticsearch_config()
-
-    headers = {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': 'Basic %s' % base64.b64encode("%s:%s" % (es_user, es_passwd))
-    }
-
-    json_request = json.dumps(d)
-
-    result = urlfetch.fetch('%s/gipod/_search' % base_url, json_request, method=urlfetch.POST, headers=headers, deadline=30)
-    if result.status_code not in (200,):
-        logging.info('Search gipod: %s %s', result.status_code, result.content)
-        raise Exception('Failed to search gipod')
-
-    result_data = json.loads(result.content)
+    config = get_elasticsearch_config()
+    path = '/%s/_search' % config.items_index
+    result_data = _request(config, path, urlfetch.POST, query)
 
     new_cursor = None
     next_offset = start_offset + len(result_data['hits']['hits'])

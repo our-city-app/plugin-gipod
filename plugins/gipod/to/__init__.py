@@ -16,8 +16,7 @@
 # @@license_version:1.5@@
 
 from framework.to import TO
-from mcfw.properties import unicode_property, float_property, typed_property, \
-    long_property, object_factory
+from mcfw.properties import unicode_property, float_property, typed_property, long_property, object_factory
 
 
 class GipodPluginConfiguration(TO):

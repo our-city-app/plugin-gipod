@@ -16,29 +16,25 @@
 # @@license_version:1.5@@
 
 from google.appengine.ext import ndb
+from mcfw.consts import DEBUG
 
 from framework.models.common import NdbModel
 from plugins.gipod.plugin_consts import NAMESPACE
 
 
-class WorkAssignmentSettings(NdbModel):
+class ItemFilterType(object):
+    RANGE = 'range'
+    START_DATE = 'start_date'
+
+
+class SyncSettings(NdbModel):  # for both work assignments and manifestations
     NAMESPACE = NAMESPACE
 
     synced_until = ndb.DateTimeProperty()
 
     @classmethod
     def create_key(cls):
-        return ndb.Key(cls, u'WorkAssignmentSettings', namespace=cls.NAMESPACE)
-
-
-class ManifestationSettings(NdbModel):
-    NAMESPACE = NAMESPACE
-
-    synced_until = ndb.DateTimeProperty()
-
-    @classmethod
-    def create_key(cls):
-        return ndb.Key(cls, u'ManifestationSettings', namespace=cls.NAMESPACE)
+        return ndb.Key(cls, 'SyncSettings', namespace=cls.NAMESPACE)
 
 
 class BaseModel(NdbModel):
@@ -46,12 +42,10 @@ class BaseModel(NdbModel):
     TYPE_WORK_ASSIGNMENT = u'w'
     TYPE_MANIFESTATION = u'm'
 
-    visible = ndb.BooleanProperty()
     cleanup_date = ndb.DateTimeProperty()
-    search_keys = ndb.StringProperty(indexed=False, repeated=True)
 
     data = ndb.JsonProperty(indexed=False)
-    
+
     @property
     def uid(self):
         return self.key.id()
@@ -66,6 +60,17 @@ class BaseModel(NdbModel):
             raise Exception('incorrect type')
         id_ = u'%s-%s' % (type_, gipod_id)
         return ndb.Key(cls, id_, namespace=cls.NAMESPACE)
+
+    @classmethod
+    def list_timed_out(cls, current_date):
+        return cls.query()\
+            .filter(cls.cleanup_date != None)\
+            .filter(cls.cleanup_date < current_date)\
+            .order(cls.cleanup_date, cls.key)
+
+    @classmethod
+    def list(cls):
+        return cls.query()
 
 
 class WorkAssignment(BaseModel):
@@ -88,7 +93,7 @@ class Consumer(NdbModel):
     @classmethod
     def create_key(cls, consumer_key):
         return ndb.Key(cls, consumer_key, namespace=cls.NAMESPACE)
-    
+
 
 class ElasticsearchSettings(NdbModel):
     NAMESPACE = NAMESPACE
@@ -97,12 +102,13 @@ class ElasticsearchSettings(NdbModel):
 
     auth_username = ndb.StringProperty(indexed=False)
     auth_password = ndb.StringProperty(indexed=False)
+    items_index = ndb.StringProperty(default=None if DEBUG else 'gipod', indexed=False)
 
     @classmethod
     def create_key(cls):
         return ndb.Key(cls, u'ElasticsearchSettings', namespace=cls.NAMESPACE)
-    
-    
+
+
 class MapUser(NdbModel):
     NAMESPACE = NAMESPACE
 
@@ -116,4 +122,4 @@ class MapUser(NdbModel):
     @classmethod
     def create_key(cls, user_id):
         return ndb.Key(cls, user_id, namespace=cls.NAMESPACE)
-    
+

@@ -14,21 +14,25 @@
 # limitations under the License.
 #
 # @@license_version:1.5@@
+from __future__ import unicode_literals
 
-from datetime import datetime
 import json
 import logging
-import time
 import urllib
+from datetime import datetime
 
+from dateutil.parser import parse as parse_datetime
 from google.appengine.api import urlfetch
+from typing import Union, List, Iterable
 
-from plugins.gipod.models import Manifestation, MapUser
+from plugins.gipod.models import Manifestation, WorkAssignment, MapUser
 from plugins.gipod.plugin_consts import GIPOD_API_URL
 from plugins.gipod.to import MapItemTO, GeoPointTO, MapIconTO, MapItemDetailsTO, CoordsListTO, \
     PolygonGeometryTO, MultiPolygonGeometryTO, PolygonTO, LineStringGeometryTO, MultiLineStringGeometryTO, \
     TextSectionTO, GeometrySectionTO
 from plugins.gipod.utils import get_app_id_from_user_id
+
+NOT_IMPORTANT_COLOR = '#eeb309'
 
 
 def do_request_without_processing(relative_url, params=None):
@@ -50,13 +54,6 @@ def do_request(relative_url, params=None):
 
     r = json.loads(result.content)
     return r
-
-
-def re_index_all():
-    from plugins.gipod.bizz.manifestations import re_index_all as re_index_all_workassignments
-    from plugins.gipod.bizz.workassignments import re_index_all as re_index_all_manifestations
-    re_index_all_workassignments()
-    re_index_all_manifestations()
 
 
 def validate_and_clean_data(type_, uid, data):
@@ -96,7 +93,7 @@ def _clean_geometry(geometry):
         _clean_coordinates(geometry['coordinates'])
 
 
-# Removes unnecessary decimals (some where up to 16 decimals long!) from the coordinates (https://xkcd.com/2170/)
+# Removes unnecessary decimals (some were up to 16 decimals long!) from the coordinates (https://xkcd.com/2170)
 def _clean_coordinates(coordinates_list):
     for i, item in enumerate(coordinates_list):
         if isinstance(item, list):
@@ -111,9 +108,9 @@ def _clean_coordinates(coordinates_list):
 
 def get_workassignment_icon(important=False):
     if important:
-        return 'important' , '#f10812'
+        return 'important', '#f10812'
     else:
-        return 'non_important', '#eeb309'
+        return 'non_important', NOT_IMPORTANT_COLOR
 
 
 def get_manifestation_icon(event_type=None):
@@ -143,12 +140,13 @@ def get_manifestation_icon(event_type=None):
     return 'other', icon_color
 
 
-def convert_to_item_tos(models, extras=None):
+def convert_to_item_tos(models):
+    # type: (Iterable[Union[WorkAssignment, Manifestation]]) -> List[MapItemTO]
     items = []
     now_ = datetime.utcnow()
     for m in models:
         try:
-            items.append(convert_to_item_to(m, now_, extras))
+            items.append(convert_to_item_to(m, now_))
         except:
             logging.debug('uid: %s', m.uid)
             raise
@@ -156,63 +154,70 @@ def convert_to_item_tos(models, extras=None):
     return items
 
 
-def convert_to_item_to(m, now_, extras=None):
-    hindrance = m.data.get('hindrance') or {}
+def convert_to_item_to(model, now_):
+    hindrance = model.data.get('hindrance') or {}
 
-    if m.TYPE == 'w':
+    if isinstance(model, Manifestation):
+        description = None
+        icon_id, icon_color = get_manifestation_icon(model.data['eventType'])
+        # Sort by start date
+        sorted_periods = sorted(((parse_datetime(p['startDateTime']), parse_datetime(p['endDateTime']))
+                                 for p in model.data.get('periods', [])), key=lambda a: a[0])
+        for start_date, end_date in sorted_periods:
+            # Skip dates in the past
+            if end_date < now_:
+                continue
+            description = period_to_string(now_, start_date, end_date, False)
+            break
+    elif isinstance(model, WorkAssignment):
         icon_id, icon_color = get_workassignment_icon(hindrance.get('important', False))
-    elif m.TYPE == 'm':
-        icon_id, icon_color = get_manifestation_icon(m.data['eventType'])
+        start_date = parse_datetime(model.data['startDateTime'])
+        end_date = parse_datetime(model.data['endDateTime'])
+        description = period_to_string(now_, start_date, end_date, False)
     else:
-        raise Exception('Unknown type: %s', m.TYPE)
+        raise Exception('Unknown item type %s' % model)
 
-    effects = hindrance.get('effects') or []
-
-    description_message = []
-    if extras and m.uid in extras:
-        for p in extras[m.uid]['periods']:
-            start_date = p['start']
-            end_date = p['end']
-
-            if start_date.date() == end_date.date():
-                if start_date.year == now_.year:
-                    description_message.append('Op %s' % (start_date.strftime("%d/%m")))
-                else:
-                    description_message.append('Op %s' % (start_date.strftime("%d/%m/%Y")))
-            else:
-                if start_date.year == now_.year:
-                    start_date_str = start_date.strftime("%d/%m")
-                else:
-                    start_date_str = start_date.strftime("%d/%m/%Y")
-
-                if end_date.year == now_.year:
-                    end_date_str = end_date.strftime("%d/%m")
-                else:
-                    end_date_str = end_date.strftime("%d/%m/%Y")
-
-                description_message.append('Van %s tot %s' % (start_date_str, end_date_str))
-
-        if description_message:
-            if effects:
-                description_message.append('')
-                description_message.extend(effects)
-
-    return MapItemTO(id=m.uid,
-                     coords=GeoPointTO(lat=m.data['location']['coordinate']['coordinates'][1],
-                                       lon=m.data['location']['coordinate']['coordinates'][0]),
+    return MapItemTO(id=model.uid,
+                     coords=GeoPointTO(lat=model.data['location']['coordinate']['coordinates'][1],
+                                       lon=model.data['location']['coordinate']['coordinates'][0]),
                      icon=MapIconTO(id=icon_id,
                                     color=icon_color),
-                     title=m.data['description'],
-                     description=u'\n'.join(description_message) if description_message else None)
+                     title=model.data['description'],
+                     description=description)
 
 
-def convert_to_item_details_tos(models):
+def period_to_string(now_, start_date, end_date, include_time):
+    # type: (datetime, datetime, datetime, bool) -> unicode
+    start_date_str = start_date.strftime(get_date_format(now_, start_date, include_time))
+    if include_time:
+        if start_date.date() == end_date.date() and start_date.time() == end_date.time():
+            return 'Op %s' % start_date_str
+    elif start_date.date() == end_date.date():
+        return 'Op %s' % start_date_str
+    end_date_str = end_date.strftime(get_date_format(now_, end_date, include_time))
+    return 'Van %s tot %s' % (start_date_str, end_date_str)
+
+
+def get_date_format(now, date, include_time):
+    # type: (datetime, datetime, bool) -> unicode
+    if date.time() and include_time:
+        if now.year == date.year:
+            return '%d/%m %H:%M'
+        else:
+            return '%d/%m/%Y %H:%M'
+    if now.year == date.year:
+        return '%d/%m'
+    return '%d/%m/%Y'
+
+
+def convert_to_item_details_tos(uids, models):
     items = []
-    for m in models:
+    current_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    for uid, m in zip(uids, models):
         try:
-            items.append(convert_to_item_details_to(m))
+            items.append(convert_to_item_details_to(uid, m, current_date))
         except:
-            logging.debug('uid: %s', m.uid)
+            logging.debug('uid: %s', uid)
             raise
 
     return items
@@ -252,126 +257,112 @@ def get_geometry_to(data, color):
 
 
 def get_geometry_tos(uid, data, color):
-    if data['type'] == 'LineString':
-        return [get_geometry_to(data, color)]
-    elif data['type'] == 'MultiLineString':
-        return [get_geometry_to(data, color)]
-    elif data['type'] == 'Polygon':
-        return [get_geometry_to(data, color)]
-    elif data['type'] == 'MultiPolygon':
+    if data['type'] in ('LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'):
         return [get_geometry_to(data, color)]
     elif data['type'] == 'GeometryCollection':
-        l = []
+        geo_list = []
         for g in data['geometries']:
             to = get_geometry_to(g, color)
             if to:
-                l.append(to)
+                geo_list.append(to)
             else:
                 logging.error('Unknown geometry collection  type: "%s" for %s', g['type'], uid)
-        return l
-    
+        return geo_list
+
     logging.error('Unknown geometry type: "%s" for %s', data['type'], uid)
     return []
 
 
-def convert_to_item_details_to(m):
-    hindrance = m.data.get('hindrance') or {}
-    if m.TYPE == 'w':
-        _, icon_color = get_workassignment_icon(hindrance.get('important', False))
-    elif m.TYPE == 'm':
-        _, icon_color = get_manifestation_icon(m.data['eventType'])
-
-    to = MapItemDetailsTO(id=m.uid,
-                          geometry=get_geometry_tos(m.uid, m.data['location']['geometry'], icon_color),
+def convert_to_item_details_to(uid, model, current_date):
+    # type: (str, Union[WorkAssignment, Manifestation], datetime) -> MapItemDetailsTO
+    to = MapItemDetailsTO(id=uid,
+                          geometry=[],
                           sections=[])
+    if isinstance(model, WorkAssignment):
+        _, icon_color = get_workassignment_icon(model.data.get('hindrance', {}).get('important', False))
+    elif isinstance(model, Manifestation):
+        _, icon_color = get_manifestation_icon(model.data['eventType'])
+    elif model is None:
+        # Chances of this happening *should* be very low
+        # This should only happen when user has the map open for a long time,
+        # and he clicks on an item that has been deleted in the mean time
+        to.sections = [TextSectionTO(title='Verwijderd',
+                                     description='Dit item bestaat niet meer')]
+        return to
+    else:
+        raise Exception('Unknown type: %s', model)
 
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    to.geometry = get_geometry_tos(uid, model.data['location']['geometry'], icon_color)
 
     dates = []
-    if m.TYPE == 'w':
-        start_date = datetime.strptime(m.data['startDateTime'], "%Y-%m-%dT%H:%M:%S")
-        end_date = datetime.strptime(m.data['endDateTime'], "%Y-%m-%dT%H:%M:%S")
+    if isinstance(model, WorkAssignment):
+        start_date = datetime.strptime(model.data['startDateTime'], "%Y-%m-%dT%H:%M:%S")
+        end_date = datetime.strptime(model.data['endDateTime'], "%Y-%m-%dT%H:%M:%S")
         dates.append({'start': start_date, 'end': end_date})
-    elif m.TYPE == 'm':
-        for i, p in enumerate(m.data['periods']):
+    elif isinstance(model, Manifestation):
+        for i, p in enumerate(model.data['periods']):
             end_date = datetime.strptime(p['endDateTime'], "%Y-%m-%dT%H:%M:%S")
-            if end_date < today:
+            if end_date < current_date:
                 continue
             start_date = datetime.strptime(p['startDateTime'], "%Y-%m-%dT%H:%M:%S")
 
             dates.append({'start': start_date, 'end': end_date})
             if len(dates) > 2:
                 break
-    else:
-        raise Exception('Unknown type: %s', m.TYPE)
-
     if dates:
         sorted_dates = sorted(dates, key=lambda d: d['start'])
         periods_message = []
         for d in sorted_dates:
-            if d['start'].time():
-                if today.year == d['start'].year:
-                    start_date_str = d['start'].strftime("%d/%m %H:%M")
-                else:
-                    start_date_str = d['start'].strftime("%d/%m/%Y %H:%M")
-            elif today.year == d['start'].year:
-                start_date_str = d['start'].strftime("%d/%m")
-            else:
-                start_date_str = d['start'].strftime("%d/%m/%Y")
+            periods_message.append(period_to_string(current_date, d['start'], d['end'], True))
 
-            if d['end'].time():
-                if today.year == d['end'].year:
-                    end_date_str = d['end'].strftime("%d/%m %H:%M")
-                else:
-                    end_date_str = d['end'].strftime("%d/%m/%Y %H:%M")
-            elif today.year == d['end'].year:
-                end_date_str = d['end'].strftime("%d/%m")
+        contact_details = model.data.get('contactDetails') or {}
+        if contact_details.get('organisation'):
+            if model.data.get('type'):
+                periods_message.append('%s - %s' % (model.data['type'], contact_details['organisation']))
             else:
-                end_date_str = d['end'].strftime("%d/%m/%Y")
-
-            periods_message.append('Van %s tot %s' % (start_date_str, end_date_str))
-        
-        contactDetails = m.data.get('contactDetails') or {}
-        if contactDetails.get('organisation'):
-            if m.data.get('type'):
-                periods_message.append("%s - %s" % (m.data['type'], contactDetails['organisation']))
-            else:
-                periods_message.append("%s" % (contactDetails['organisation']))
+                periods_message.append(contact_details['organisation'])
 
         to.sections.append(TextSectionTO(title=None,
-                                         description=u'\n'.join(periods_message)))
+                                         description='\n'.join(periods_message)))
 
-    effects = hindrance.get('effects') or []
+    effects = model.data.get('hindrance', {}).get('effects') or []
     if effects:
-        to.sections.append(TextSectionTO(title=u'Hinder',
-                                         description=u'\n'.join(effects)))
-                                   
-    diversions = m.data.get('diversions') or []
+        description_lines = []
+        for effect in effects:
+            description_lines.append('- %s' % effect)
+        to.sections.append(TextSectionTO(title='Hinder',
+                                         description='\n'.join(description_lines)))
+
+    diversions = model.data.get('diversions') or []
     for i, diversion in enumerate(diversions):
-        diversions_message = []
+        lines = []
         diversion_types = diversion.get('diversionTypes') or []
         if diversion_types:
-            diversions_message.append('Deze omleiding is geldig voor:\n%s' % ('\n'.join(diversion_types)))
+            lines.append('Deze omleiding is geldig voor:')
+            for t in diversion_types:
+                lines.append('- %s' % t)
         diversion_streets = diversion.get('streets') or []
         if diversion_streets:
-            diversions_message.append('U kan ook volgende straten volgen:\n%s' % ('\n'.join(diversion_streets)))
-
-        to.sections.append(GeometrySectionTO(title=u'Omleiding %s' % (i + 1),
-                                             description=u'\n'.join(diversions_message),
-                                             geometry=get_geometry_tos(m.uid, diversion['geometry'], '#2dc219')))
+            lines.append('Deze omleiding loopt via de volgende straten:')
+            for street in diversion_streets:
+                lines.append('- %s' % street)
+        title = 'Omleiding %d' % (i + 1) if len(diversions) > 1 else 'Omleiding'
+        to.sections.append(GeometrySectionTO(title=title,
+                                             description='\n'.join(lines),
+                                             geometry=get_geometry_tos(model.uid, diversion['geometry'], '#2dc219')))
 
     return to
 
 
 def save_last_load_map_request(user_id, d):
-    mu_key = MapUser.create_key(user_id)
-    mu =mu_key .get()
-    if not mu:
-        mu = MapUser(key=mu_key)
-        mu.app_id = get_app_id_from_user_id(user_id)
+    key = MapUser.create_key(user_id)
+    map_user = key.get()
+    if not map_user:
+        map_user = MapUser(key=key)
+        map_user.app_id = get_app_id_from_user_id(user_id)
 
-    if mu.last_load_request and mu.last_load_request > d:
+    if map_user.last_load_request and map_user.last_load_request > d:
         return
 
-    mu.last_load_request = d
-    mu.put()
+    map_user.last_load_request = d
+    map_user.put()
