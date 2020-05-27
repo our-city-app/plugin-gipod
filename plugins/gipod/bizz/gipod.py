@@ -78,8 +78,7 @@ def fetch_iter(query, keys_only=True):
     cursor = None
     has_more = True
     while has_more:
-        models, cursor, has_more = query.fetch_page(ndb.datastore_rpc.BaseConnection.MAX_GET_KEYS, start_cursor=cursor,
-                                                    keys_only=keys_only)
+        models, cursor, has_more = query.fetch_page(1000, start_cursor=cursor, keys_only=keys_only)
         for model in models:
             yield model
 
