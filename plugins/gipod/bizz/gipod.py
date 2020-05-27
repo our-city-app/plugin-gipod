@@ -15,25 +15,27 @@
 #
 # @@license_version:1.5@@
 
-import logging
 from datetime import datetime
+import logging
 
 from dateutil.parser import parse as parse_datetime
 from dateutil.relativedelta import relativedelta
+from google.appengine.datastore import datastore_rpc
 from google.appengine.ext import ndb, deferred
-from mcfw.consts import DEBUG
-from mcfw.rpc import arguments
 from typing import Type, Union, Tuple, List, Iterable
 
 from framework.bizz.job import run_job, MODE_BATCH
 from framework.consts import HIGH_LOAD_CONTROLLER_QUEUE
 from framework.utils import chunks
 from framework.utils.cloud_tasks import create_task, run_tasks, schedule_tasks
+from mcfw.consts import DEBUG
+from mcfw.rpc import arguments
 from plugins.gipod.bizz import do_request, validate_and_clean_data, do_request_without_processing
 from plugins.gipod.bizz.elasticsearch import delete_docs, index_doc_operations, delete_doc_operations, \
     execute_bulk_request
 from plugins.gipod.models import Manifestation, SyncSettings, WorkAssignment
 from plugins.gipod.plugin_consts import SYNC_QUEUE
+
 
 mapping = {
     Manifestation.TYPE: {
@@ -73,12 +75,13 @@ def cleanup_timed_out():
     run_job(cleanup_timed_out_query, [WorkAssignment, current_date], re_index, [], mode=MODE_BATCH)
 
 
-def fetch_iter(query, keys_only=True):
+def fetch_iter(qry, keys_only=True):
     # type: (ndb.Query, ndb.QueryOptions) -> Iterable[ndb.Key]
     cursor = None
     has_more = True
     while has_more:
-        models, cursor, has_more = query.fetch_page(1000, start_cursor=cursor, keys_only=keys_only)
+        models, cursor, has_more = qry.fetch_page(datastore_rpc.BaseConnection.MAX_GET_KEYS, start_cursor=cursor,
+                                                  keys_only=keys_only)
         for model in models:
             yield model
 
