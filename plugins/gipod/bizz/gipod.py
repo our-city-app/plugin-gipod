@@ -244,7 +244,7 @@ def cleanup_deleted_worker(keys):
     # Gipod api does always not return the same results when doing the same query twice.
     # For this reason we doublecheck if an item is deleted or not by fetching its details.
     for key in keys:
-        type_, gipod_id = key.split('-')
+        type_, gipod_id = key.id().split('-')
         item = mapping[type_]
         result = do_request_without_processing(item['detail'] % gipod_id)
         if result.status_code == 404:
