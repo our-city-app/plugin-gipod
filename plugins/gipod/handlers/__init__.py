@@ -110,6 +110,7 @@ class GipodItemIdsHandler(AuthValidationHandler):
 class GipodItemDetailsHandler(AuthValidationHandler):
 
     def post(self):
+        logging.debug(self.request.body)
         params = json.loads(self.request.body) if self.request.body else {}
         ids = params.get('ids', [])
         result = GetMapItemDetailsResponseTO(items=_get_details(ids))
