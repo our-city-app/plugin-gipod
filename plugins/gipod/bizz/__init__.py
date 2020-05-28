@@ -156,8 +156,6 @@ def convert_to_item_tos(models):
 
 
 def convert_to_item_to(model, now_):
-    hindrance = model.data.get('hindrance') or {}
-
     if isinstance(model, Manifestation):
         description = None
         icon_id, icon_color = get_manifestation_icon(model.data['eventType'])
@@ -171,6 +169,7 @@ def convert_to_item_to(model, now_):
             description = period_to_string(now_, start_date, end_date, False)
             break
     elif isinstance(model, WorkAssignment):
+        hindrance = model.data.get('hindrance') or {}
         icon_id, icon_color = get_workassignment_icon(hindrance.get('important', False))
         start_date = parse_datetime(model.data['startDateTime'])
         end_date = parse_datetime(model.data['endDateTime'])
@@ -279,8 +278,9 @@ def convert_to_item_details_to(uid, model, current_date):
     to = MapItemDetailsTO(id=uid,
                           geometry=[],
                           sections=[])
+    hindrance = model.data.get('hindrance') or {}
     if isinstance(model, WorkAssignment):
-        _, icon_color = get_workassignment_icon(model.data.get('hindrance', {}).get('important', False))
+        _, icon_color = get_workassignment_icon(hindrance.get('important', False))
     elif isinstance(model, Manifestation):
         _, icon_color = get_manifestation_icon(model.data['eventType'])
     elif model is None:
@@ -326,7 +326,7 @@ def convert_to_item_details_to(uid, model, current_date):
         to.sections.append(TextSectionTO(title=None,
                                          description='\n'.join(periods_message)))
 
-    effects = model.data.get('hindrance', {}).get('effects') or []
+    effects = hindrance.get('effects') or []
     if effects:
         description_lines = []
         for effect in effects:
