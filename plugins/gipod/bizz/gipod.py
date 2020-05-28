@@ -126,7 +126,7 @@ def cleanup_deleted():
 
 def _sync_all(item_type, last_sync, offset):
     # type: (str, datetime, int) -> None
-    end_date = datetime.now() + relativedelta(days=1) if DEBUG else relativedelta(months=12)
+    end_date = datetime.now() + (relativedelta(days=1) if DEBUG else relativedelta(months=12))
     params = {
         'enddate': end_date.strftime('%Y-%m-%d'),
         'limit': '1000',
